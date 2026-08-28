@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Used by Archera - https://www.archera.ai This must remain in place for
+  Archera to operate correctly. Email support@archera.ai for help.
+Resources:
+  ReservedAIRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ReservedAI-Write
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: arn:aws:iam::967800896805:user/reserved-write
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: "8ab6faee-ffc1-4302-93a3-98daf7178208"
+      Policies:
+        - PolicyName: ReservedAI-Write
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ce:*'
+                  - 'pricing:*'
+                  - 'sts:GetCallerIdentity'
+                  - 'servicequotas:GetServiceQuota'
+                  - 'servicequotas:GetRequestedServiceQuotaChange'
+                  - 'servicequotas:GetAWSDefaultServiceQuota'
+                  - 'servicequotas:ListServices'
+                  - 'servicequotas:ListServiceQuotas'
+                  - 'servicequotas:ListRequestedServiceQuotaChangeHistoryByQuota'
+                  - 'servicequotas:RequestServiceQuotaIncrease'
+                  - 'cloudtrail:LookupEvents'
+                  - 'cur:DescribeReportDefinitions'
+                  - 'ec2:DescribeAccountAttributes'
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeRegions'
+                  - 'ec2:DescribeAvailabilityZones'
+                  - 'ec2:CreateSpotDatafeedSubscription'
+                  - 'ec2:DescribeSpotDatafeedSubscription'
+                  - 'ec2:DescribeSpotFleetInstances'
+                  - 'ec2:DescribeSpotFleetRequestHistory'
+                  - 'ec2:DescribeSpotFleetRequests'
+                  - 'ec2:DescribeSpotInstanceRequests'
+                  - 'ec2:DescribeSpotPriceHistory'
+                  - 'ec2:DescribeFleetHistory'
+                  - 'ec2:DescribeFleetInstances'
+                  - 'ec2:DescribeFleets'
+                  - 'ec2:DescribeTags'
+                  - 'tag:GetResources'
+                  - 'resource-groups:GetGroupQuery'
+                  - 'resource-groups:SearchResources'
+                  - 'resource-groups:GetGroup'
+                  - 'resource-groups:GetGroupConfiguration'
+                  - 'resource-groups:GetTags'
+                  - 'resource-groups:ListGroupResources'
+                  - 'resource-groups:ListGroups'
+                  - 'ec2:DescribeAddresses'
+                  - 'ec2:DescribeMovingAddresses'
+                  - 'ec2:DescribeVolumes'
+                  - 'ec2:DescribeVolumesModifications'
+                  - 'ec2:DescribeVolumeStatus'
+                  - 'ec2:DescribeElasticGpus'
+                  - 'ec2:DescribeScheduledInstances'
+                  - 'ec2:DescribeScheduledInstanceAvailability'
+                  - 'ec2:DescribeReservedInstances'
+                  - 'ec2:DescribeReservedInstancesModifications'
+                  - 'ec2:DescribeReservedInstancesListings'
+                  - 'ec2:GetReservedInstancesExchangeQuote'
+                  - 'ec2:DescribeReservedInstancesOfferings'
+                  - 'ec2:DescribeCapacityReservations'
+                  - 'ec2:DescribeHosts'
+                  - 'ec2:DescribeHostReservations'
+                  - 'ec2:GetHostReservationPurchasePreview'
+                  - 'ec2:DescribeHostReservationOfferings'
+                  - 'ec2:DescribeCapacityBlockOfferings'
+                  - 'organizations:DescribeOrganization'
+                  - 'organizations:ListAccounts'
+                  - 'organizations:DescribeAccount'
+                  - 'savingsplans:DescribeSavingsPlansOfferingRates'
+                  - 'savingsplans:DescribeSavingsPlansOfferings'
+                  - 'savingsplans:DescribeSavingsPlans'
+                  - 'savingsplans:DescribeSavingsPlanRates'
+                  - 'rds:DescribeReservedDBInstances'
+                  - 'rds:DescribeReservedDBInstancesOfferings'
+                  - 'redshift:DescribeReservedNodeOfferings'
+                  - 'redshift:DescribeReservedNodes'
+                  - 'dynamodb:DescribeReservedCapacity'
+                  - 'dynamodb:DescribeReservedCapacityOfferings'
+                  - 'elasticache:DescribeReservedCacheNodes'
+                  - 'elasticache:DescribeReservedCacheNodesOfferings'
+                  - 'memorydb:DescribeReservedNodes'
+                  - 'memorydb:DescribeReservedNodesOfferings'
+                  - 'es:DescribeReservedElasticsearchInstanceOfferings'
+                  - 'es:DescribeReservedElasticsearchInstances'
+                  - 'ec2:ModifyReservedInstances'
+                  - 'ec2:PurchaseReservedInstancesOffering'
+                  - 'ec2:AcceptReservedInstancesExchangeQuote'
+                  - 'ec2:CreateReservedInstancesListing'
+                  - 'ec2:CancelReservedInstancesListing'
+                  - 'ec2:PurchaseScheduledInstances'
+                  - 'ec2:RunScheduledInstances'
+                  - 'ec2:ModifyCapacityReservation'
+                  - 'ec2:ModifyInstanceCapacityReservationAttributes'
+                  - 'ec2:CreateCapacityReservation'
+                  - 'ec2:CancelCapacityReservation'
+                  - 'ec2:PurchaseHostReservation'
+                  - 'elasticache:PurchaseReservedCacheNodesOffering'
+                  - 'memorydb:PurchaseReservedNodesOffering'
+                  - 'rds:PurchaseReservedDbInstancesOffering'
+                  - 'redshift:PurchaseReservedNodeOffering'
+                  - 'redshift:AcceptReservedNodeExchange'
+                  - 'es:PurchaseReservedElasticsearchInstanceOffering'
+                  - 'savingsplans:CreateSavingsPlan'
+                  - 'savingsplans:DeleteQueuedSavingsPlan'
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: 
+                  - arn:aws:iam::*:role/aws-service-role/*
+              - Effect: Allow
+                Action:
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                  - iam:SimulatePrincipalPolicy
+                Resource:
+                  - arn:aws:iam::*:role/ReservedAI-Write
+              - Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:ListBucket
+                  - s3:PutBucketPolicy
+                Resource:
+                  - arn:aws:s3:::reserved-ai-cur-*
+                  - arn:aws:s3:::reserved-ai-spot-*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - arn:aws:s3:::reserved-ai-cur-*/*
+                  - arn:aws:s3:::reserved-ai-spot-*/*
+              - Effect: Allow
+                Action:
+                  - cur:PutReportDefinition
+                Resource:
+                  - arn:aws:cur:*:*:definition/reserved-ai-*

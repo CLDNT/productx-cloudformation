@@ -7,7 +7,7 @@ Reviewers: CEO, COO, Product Manager, Sales Lead, Solutions Architects
 
 ## Context
 
-The `Cloudelligent_WAFR_Onboarding.yaml` template currently deploys **8 resources** (4 IAM roles + 3 policies + 1 StackSet) into each customer's AWS account. Following the addition of `WAFRWorkloadManagement`, a review was conducted to identify further optimization opportunities.
+The `Cloudelligent_WAFR_Onboarding.yaml` template currently deploys **9 resources** (4 IAM roles + 4 policies + 1 StackSet) into each customer's AWS account. Following the addition of `WAFRWorkloadManagement` and `ComputeOptimizerPolicy`, a review was conducted to identify further optimization opportunities.
 
 Goals:
 - Minimize the number of IAM roles deployed in customer accounts (each role is a security review item)
@@ -24,7 +24,7 @@ Current state:
 | BillingReadOnlyRole | `BillingReadOnlyRole` | Internal finance (`898668804275`) | Invoice/billing analytics |
 | ReservedAIRole | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility + CUR creation (RI/SP purchasing is in Archera's separate full template) |
 
-Plus conditional policies (`AllowAssumeMemberRoles`, `ExistingCURBucketPolicy`) and the StackSet.
+Plus policies attached to `ProductXWAFRRole` (`ComplianceSignalAccess`, `WAFRWorkloadManagement`, `ComputeOptimizerPolicy`, `ManageCURPolicy`, and the conditional `AllowAssumeMemberRoles` + `ExistingCURBucketPolicy`) and the StackSet.
 
 ---
 
@@ -128,7 +128,7 @@ No change. The role stays separate with its own narrow permissions. Costs nothin
 
 ## Outcome After Actionable Proposals (if 1 + 4 accepted)
 
-**Before (current):** 4 roles + 3 policies + 1 StackSet = 8 resources.
+**Before (current):** 4 roles + 4 policies + 1 StackSet = 9 resources.
 
 **After:**
 - Remove redundant `ComplianceSignalAccess` inline policy (template simplification, no functional change)

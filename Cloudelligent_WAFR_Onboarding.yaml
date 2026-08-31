@@ -108,6 +108,30 @@ Resources:
                   - wellarchitected:CreateMilestone
                 Resource:
                   - !Sub 'arn:aws:wellarchitected:*:${AWS::AccountId}:workload/*'
+              - Sid: WorkloadReadAccess
+                Effect: Allow
+                Action:
+                  - wellarchitected:GetWorkload
+                  - wellarchitected:GetAnswer
+                  - wellarchitected:GetLensReview
+                  - wellarchitected:GetLensReviewReport
+                  - wellarchitected:GetMilestone
+                  - wellarchitected:GetLensVersionDifference
+                  - wellarchitected:GetConsolidatedReport
+                Resource: '*'
+              - Sid: WorkloadListAccess
+                Effect: Allow
+                Action:
+                  - wellarchitected:ListWorkloads
+                  - wellarchitected:ListAnswers
+                  - wellarchitected:ListLensReviews
+                  - wellarchitected:ListLensReviewImprovements
+                  - wellarchitected:ListMilestones
+                  - wellarchitected:ListLenses
+                  - wellarchitected:ListCheckDetails
+                  - wellarchitected:ListCheckSummaries
+                  - wellarchitected:ListNotifications
+                Resource: '*'
               - Sid: WorkloadTagging
                 Effect: Allow
                 Action:
@@ -117,6 +141,39 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:wellarchitected:*:${AWS::AccountId}:workload/*'
 
+
+  # =============================================================
+  # Compute Optimizer Policy (ProductX)
+  # =============================================================
+  ComputeOptimizerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ProductXComputeOptimizer
+      Roles:
+        - !Ref ProductXWAFRRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - compute-optimizer:DescribeRecommendationExportJobs
+              - compute-optimizer:GetAutoScalingGroupRecommendations
+              - compute-optimizer:GetEBSVolumeRecommendations
+              - compute-optimizer:GetEC2InstanceRecommendations
+              - compute-optimizer:GetEC2RecommendationProjectedMetrics
+              - compute-optimizer:GetECSServiceRecommendationProjectedMetrics
+              - compute-optimizer:GetECSServiceRecommendations
+              - compute-optimizer:GetEffectiveRecommendationPreferences
+              - compute-optimizer:GetEnrollmentStatus
+              - compute-optimizer:GetEnrollmentStatusesForOrganization
+              - compute-optimizer:GetIdleRecommendations
+              - compute-optimizer:GetLambdaFunctionRecommendations
+              - compute-optimizer:GetLicenseRecommendations
+              - compute-optimizer:GetRDSDatabaseRecommendationProjectedMetrics
+              - compute-optimizer:GetRDSDatabaseRecommendations
+              - compute-optimizer:GetRecommendationPreferences
+              - compute-optimizer:GetRecommendationSummaries
+            Resource: '*'
 
   # =============================================================
   # Allow Assume Member Account Roles (org mode only)
@@ -497,6 +554,29 @@ Resources:
                           - access-analyzer:ListAnalyzers
                           - access-analyzer:ListFindings
                         Resource: '*'
+                - PolicyName: ComputeOptimizerAccess
+                  PolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                      - Effect: Allow
+                        Action:
+                          - compute-optimizer:DescribeRecommendationExportJobs
+                          - compute-optimizer:GetAutoScalingGroupRecommendations
+                          - compute-optimizer:GetEBSVolumeRecommendations
+                          - compute-optimizer:GetEC2InstanceRecommendations
+                          - compute-optimizer:GetEC2RecommendationProjectedMetrics
+                          - compute-optimizer:GetECSServiceRecommendationProjectedMetrics
+                          - compute-optimizer:GetECSServiceRecommendations
+                          - compute-optimizer:GetEffectiveRecommendationPreferences
+                          - compute-optimizer:GetEnrollmentStatus
+                          - compute-optimizer:GetIdleRecommendations
+                          - compute-optimizer:GetLambdaFunctionRecommendations
+                          - compute-optimizer:GetLicenseRecommendations
+                          - compute-optimizer:GetRDSDatabaseRecommendationProjectedMetrics
+                          - compute-optimizer:GetRDSDatabaseRecommendations
+                          - compute-optimizer:GetRecommendationPreferences
+                          - compute-optimizer:GetRecommendationSummaries
+                        Resource: '*'
                 - PolicyName: WAFRWorkloadManagement
                   PolicyDocument:
                     Version: '2012-10-17'
@@ -525,6 +605,30 @@ Resources:
                         Effect: Allow
                         Action:
                           - wellarchitected:CreateMilestone
+                        Resource: '*'
+                      - Sid: WorkloadReadAccess
+                        Effect: Allow
+                        Action:
+                          - wellarchitected:GetWorkload
+                          - wellarchitected:GetAnswer
+                          - wellarchitected:GetLensReview
+                          - wellarchitected:GetLensReviewReport
+                          - wellarchitected:GetMilestone
+                          - wellarchitected:GetLensVersionDifference
+                          - wellarchitected:GetConsolidatedReport
+                        Resource: '*'
+                      - Sid: WorkloadListAccess
+                        Effect: Allow
+                        Action:
+                          - wellarchitected:ListWorkloads
+                          - wellarchitected:ListAnswers
+                          - wellarchitected:ListLensReviews
+                          - wellarchitected:ListLensReviewImprovements
+                          - wellarchitected:ListMilestones
+                          - wellarchitected:ListLenses
+                          - wellarchitected:ListCheckDetails
+                          - wellarchitected:ListCheckSummaries
+                          - wellarchitected:ListNotifications
                         Resource: '*'
                       - Sid: WorkloadTagging
                         Effect: Allow

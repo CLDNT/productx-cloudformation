@@ -13,7 +13,7 @@ Cloudelligent is discontinuing CoreStack and consolidating client onboarding ont
 2. `BillingReadOnlyRole` — billing access for an internal viewer
 3. `ReservedAI-Write` — Archera's role for RI/SP purchasing and CUR creation
 
-The new ProductX stack (`ProductX_WAFR_Workload_ComputeOptimizer_Role.yaml`) currently includes a `ManageCURPolicy` that grants ProductX the ability to:
+The new ProductX stack (`Cloudelligent_WAFR_Onboarding.yaml`) currently includes a `ManageCURPolicy` that grants ProductX the ability to:
 - Create CUR report definitions (`cur:PutReportDefinition`)
 - Create and configure S3 buckets (`s3:CreateBucket`, `s3:PutBucketPolicy` on `productx-cur-*`)
 - Read CUR data from the bucket it provisions

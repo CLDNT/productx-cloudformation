@@ -20,15 +20,39 @@ Each entry documents a change to the CloudFormation template deployed into custo
 
 ## [2.0] — 2026-08-27
 
-### Clarified: Cost Optimization Engine Permission Dependencies (documentation only)
+### Added: ComputeOptimizerPolicy (Compute Optimizer fallback)
 
 **What changed:**  
-Updated README source-of-truth table and business use case mapping to reference the ProductX Cost Optimization Engine design document (`ProductX/docs/knowledge/design.md`) as the authoritative source for FinOps permission requirements. Clarified that AWS Compute Optimizer is **not** a dependency of the engine.
+Added a dedicated `ComputeOptimizerPolicy` to `ProductXWAFRRole` (management account) and `ComputeOptimizerAccess` to `ProductXWAFRMemberRole` (member accounts via StackSet). Grants read-only `compute-optimizer:Get*`/`Describe*` actions.
 
 **Why:**  
-The engine collects CloudWatch metrics directly and runs its own proprietary methodology. It does not call AWS Compute Optimizer APIs, read its recommendations, or check enrollment. The `compute-optimizer:*` permissions in `ReadOnlyAccess` are available but unused by the engine — this distinction matters for security reviews and accurate documentation.
+AWS Compute Optimizer serves as a **fallback/supplement** to the ProductX Cost Optimization Engine. The engine does not depend on Compute Optimizer — it computes its own recommendations from CloudWatch metrics — but native AWS recommendations are surfaced alongside the engine's findings when available. This gives customers a second data point and covers any resource types the engine hasn't yet modeled.
 
-The engine's actual dependencies (all read-only, all already covered by `ReadOnlyAccess` + `ExistingCURBucketPolicy`):
+**Customer impact:**
+- New customers: Compute Optimizer recommendations appear alongside ProductX findings (read-only, no enrollment required by ProductX)
+- Existing customers: Need stack update to gain the fallback recommendations
+
+**Sales talking point:**  
+> "ProductX runs its own proprietary optimization engine AND surfaces AWS Compute Optimizer's native recommendations as a cross-check — you get both, all read-only."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | Existing clients need a stack update to receive Compute Optimizer fallback recommendations |
+| Product Manager | Confirm the ProductX UI surfaces Compute Optimizer data as a supplement, not a primary source |
+
+---
+
+### Clarified: Cost Optimization Engine vs. Compute Optimizer (documentation)
+
+**What changed:**  
+Updated README source-of-truth table and business use case mapping to reference the ProductX Cost Optimization Engine design document (`docs/knowledge/design.md`) as the authoritative source for FinOps permission requirements. Clarified the relationship between the proprietary engine and AWS Compute Optimizer.
+
+**Why:**  
+The engine collects CloudWatch metrics directly and runs its own proprietary methodology. It does not call AWS Compute Optimizer APIs, read its recommendations, or check enrollment as part of its core analysis. Compute Optimizer is a **fallback/supplement** (see the `ComputeOptimizerPolicy` entry above), not a dependency — this distinction matters for security reviews and accurate positioning.
+
+The engine's actual dependencies (all read-only, all already covered by `ReadOnlyAccess` + `ManageCURPolicy`/`ExistingCURBucketPolicy`):
 - CloudWatch: `GetMetricData`, `GetMetricStatistics`, `ListMetrics`
 - Resource inventory: `Describe*`/`Get*`/`List*` across EC2, ASG, ECS, Lambda, RDS, ElastiCache, DynamoDB, DocumentDB, MemoryDB, WorkSpaces, SageMaker
 - Cost Explorer: `ce:GetReservationPurchaseRecommendation`, `ce:GetReservationUtilization`, `ce:DescribeNotificationSubscription`
@@ -37,18 +61,18 @@ The engine's actual dependencies (all read-only, all already covered by `ReadOnl
 - Budgets: `budgets:ViewBudget`, `budgets:Describe*`
 - Support: `support:DescribeTrustedAdvisorCheckResult`, `support:DescribeServices`, `support:DescribeSupportLevel`
 
-**Customer impact:** None — no template change, documentation only.
+**Customer impact:** None — documentation only.
 
 **Sales talking point:**  
-> "ProductX runs its own proprietary cost optimization engine. It doesn't rely on AWS Compute Optimizer — it collects metrics directly from CloudWatch and applies a deeper analysis than the native tool. The engine itself is purely read-only."
+> "ProductX runs its own proprietary cost optimization engine — it doesn't rely on AWS Compute Optimizer for its analysis. It collects metrics directly from CloudWatch and applies a deeper methodology, then cross-checks against Compute Optimizer's native recommendations as a supplement."
 
 **Action required:**
 
 | Who | Action |
 |-----|--------|
-| Sales | Use the above talking point to differentiate from competitors who just surface native AWS recommendations |
+| Sales | Position the engine as proprietary + Compute Optimizer as a supplementary cross-check |
 | Product Manager | Reference `docs/knowledge/design.md` as the canonical source for engine capabilities and coverage |
-| SAs | When customers ask "do we need to enable Compute Optimizer?" — the answer is no, ProductX works independently |
+| SAs | When customers ask "do we need to enable Compute Optimizer?" — no, ProductX works independently but will surface its recommendations if present |
 
 ---
 
@@ -113,7 +137,7 @@ Parameter description clarified to explain it enables ProductX to read an existi
 ### Added: Template README with Write Permission Tracker
 
 **What changed:**  
-Created `ProductX/README.md` documenting every component, permission source, and — critically — a line-by-line tracker of every write permission with justification, scope, and risk level.
+Created `README.md` documenting every component, permission source, and — critically — a line-by-line tracker of every write permission with justification, scope, and risk level.
 
 **Why:**  
 Multiple audiences (customer security teams, AWS partner reviewers, internal sales) were asking "what can this role do?" without a single reference document. This eliminates back-and-forth and speeds up security review approvals.

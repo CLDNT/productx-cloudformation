@@ -28,13 +28,14 @@ For AWS Organizations customers, a service-managed StackSet is created as a shel
 | # | Resource (Logical ID) | IAM Role Name | Trusted Principal | Business Use Case | Access Level |
 |---|---|---|---|---|---|
 | 1 | `ProductXWAFRRole` | `ProductXWAFRRole` | Cloudelligent ProductX account (`820440428496`) | WAFR assessments, cost optimization engine, compliance scanning, cost data read, workload management | **Read-only** + WAFR workload management |
-| 2 | `AllowAssumeMemberRoles` | _(policy on #1)_ | — | Hub-spoke: lets ProductX role in mgmt account assume member account roles | Read (sts:AssumeRole) |
-| 3 | `ManageCURPolicy` | _(policy on #1)_ | — | Create and manage CUR export + S3 delivery bucket for cost visibility | **Write** (scoped to `productx-cur-*`) |
-| 4 | `ExistingCURBucketPolicy` | _(policy on #1)_ | — | Read CUR data from an existing S3 bucket (e.g. Archera's) for cost visibility | **Read-only** |
-| 5 | `CloudvizArchitectureDiagramRole` | `cloudelligent-assessment-role` | Cloudviz account (`282762468439`) | Auto-generate architecture diagrams from live AWS resources | **Read-only** |
-| 6 | `BillingReadOnlyRole` | `BillingReadOnlyRole` | Cloudelligent finance (`898668804275`) | Internal billing analytics, invoice access, Trusted Advisor checks | **Read-only** |
-| 7 | `ReservedAIRole` | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility, CUR creation, spot data feeds | **Read + Write** (scoped) |
-| 8 | `CloudelligentOnboardingMemberStackSet` | _(StackSet)_ | — | Creates StackSet shell for member account role deployment (SA manually adds stack instances) | N/A (deployment vehicle) |
+| 2 | `ComputeOptimizerPolicy` | _(policy on #1)_ | — | Read AWS Compute Optimizer recommendations (fallback source for the ProductX engine) | **Read-only** |
+| 3 | `AllowAssumeMemberRoles` | _(policy on #1)_ | — | Hub-spoke: lets ProductX role in mgmt account assume member account roles | Read (sts:AssumeRole) |
+| 4 | `ManageCURPolicy` | _(policy on #1)_ | — | Create and manage CUR export + S3 delivery bucket for cost visibility | **Write** (scoped to `productx-cur-*`) |
+| 5 | `ExistingCURBucketPolicy` | _(policy on #1)_ | — | Read CUR data from an existing S3 bucket (e.g. Archera's) for cost visibility | **Read-only** |
+| 6 | `CloudvizArchitectureDiagramRole` | `cloudelligent-assessment-role` | Cloudviz account (`282762468439`) | Auto-generate architecture diagrams from live AWS resources | **Read-only** |
+| 7 | `BillingReadOnlyRole` | `BillingReadOnlyRole` | Cloudelligent finance (`898668804275`) | Internal billing analytics, invoice access, Trusted Advisor checks | **Read-only** |
+| 8 | `ReservedAIRole` | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility, CUR creation, spot data feeds | **Read + Write** (scoped) |
+| 9 | `CloudelligentOnboardingMemberStackSet` | _(StackSet)_ | — | Creates StackSet shell for member account role deployment (SA manually adds stack instances) | N/A (deployment vehicle) |
 
 ---
 
@@ -48,6 +49,7 @@ For AWS Organizations customers, a service-managed StackSet is created as a shel
 | CUR Read (ExistingCURBucket) | [ADR-001](docs/adr/ADR-001-cur-ownership.md) | Cost Analytics — read existing CUR bucket (optional, bring-your-own) |
 | CUR Write (ManageCURPolicy) | [AWS CUR API](https://docs.aws.amazon.com/cur/latest/userguide/what-is-cur.html) + [S3 API](https://docs.aws.amazon.com/AmazonS3/latest/API/) | Cost Analytics — create CUR export + delivery bucket (`productx-cur-*`) |
 | Cost Optimization Engine (via ReadOnlyAccess) | [ProductX Cost Optimization Engine Design](docs/knowledge/design.md) — Part VI Dependencies | Optimize Usage (FinOps) — rightsizing, idle, orphaned, scheduling, optimize configuration, optimize rate |
+| Compute Optimizer (ComputeOptimizerPolicy) | [Compute Optimizer API](https://docs.aws.amazon.com/compute-optimizer/latest/APIReference/) | Optimize Usage (FinOps) — native AWS recommendations used as a fallback/supplement to the ProductX engine |
 | Cost Explorer API (via ReadOnlyAccess) | [Cost Explorer API](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/) | Cost Analytics — spend trends, RI utilization, anomaly detection; Engine savings/pricing |
 | Cost Optimization Hub (via ReadOnlyAccess) | [Cost Optimization Hub API](https://docs.aws.amazon.com/cost-optimization-hub/latest/APIReference/) | Engine AfterDiscounts pricing mode (discount-aware RI/SP rates) |
 | Cloudviz Role | Cloudviz platform requirements (vendor-specified) | Architecture diagram generation for client deliverables |
@@ -60,10 +62,11 @@ For AWS Organizations customers, a service-managed StackSet is created as a shel
 |---|---|---|---|
 | **WAFR Assessments** — identify HRIs/MRIs, redeem AWS funding | EC2, RDS, S3, IAM, Config, Security Hub, GuardDuty, KMS, Lambda, ELB, CloudTrail, 50+ services | `wellarchitected:Create/Update/Delete` (workloads only) | `ReadOnlyAccess` + `SecurityAudit` + `ComplianceSignalAccess` + `WAFRWorkloadManagement` |
 | **Optimize Usage (FinOps)** — rightsizing, idle, orphaned, scheduling, optimize config/rate | CloudWatch (`GetMetricData`, `GetMetricStatistics`, `ListMetrics`), EC2, ASG, ECS, Lambda, RDS, ElastiCache, DynamoDB, DocumentDB, MemoryDB, WorkSpaces, SageMaker, Cost Explorer, Cost Optimization Hub, Budgets, Support/Trusted Advisor | None — engine is strictly read-only; remediation is out of scope | `ReadOnlyAccess` + `ManageCURPolicy` or `ExistingCURBucketPolicy` (CUR for Billed Cost) |
+| **Optimize Usage — Compute Optimizer fallback** | AWS Compute Optimizer recommendations (EC2, EBS, ASG, ECS, Lambda, RDS) | None | `ComputeOptimizerPolicy` (native AWS recommendations surfaced alongside the engine) |
 | **Cost Analytics** — tag-based cost breakdown, daily reports | S3 (CUR bucket), Cost Explorer (`ce:*`), Budgets, Billing | CUR/S3 provisioning (`productx-cur-*`) via `ManageCURPolicy` | `ReadOnlyAccess` + `ManageCURPolicy` + `ExistingCURBucketPolicy` (optional) |
 | **Compliance Standards (SecOps)** — CIS Benchmark, FTR | GuardDuty, Inspector, Config, Security Hub, IAM, KMS, CloudTrail, VPC, S3, EC2 | None | `ReadOnlyAccess` + `SecurityAudit` + `ComplianceSignalAccess` |
 
-> **Note on AWS Compute Optimizer:** The `ReadOnlyAccess` managed policy includes `compute-optimizer:Get*` permissions. However, the ProductX Cost Optimization Engine does **not** depend on AWS Compute Optimizer — it collects CloudWatch metrics directly and applies its own proprietary methodology. The Compute Optimizer permissions remain available for any future native-recommendation surfacing but are not required by the engine. See [ProductX Cost Optimization Engine Design — Dependencies](docs/knowledge/design.md).
+> **Note on AWS Compute Optimizer:** The template includes a dedicated `ComputeOptimizerPolicy` granting `compute-optimizer:Get*`/`Describe*` (read-only). The ProductX Cost Optimization Engine does **not** depend on Compute Optimizer — it collects CloudWatch metrics directly and applies its own proprietary methodology. Compute Optimizer serves as a **fallback/supplement**: native AWS recommendations are surfaced alongside the engine's own findings when available. The engine functions fully without it. See [ProductX Cost Optimization Engine Design — Dependencies](docs/knowledge/design.md).
 
 ---
 
@@ -75,7 +78,7 @@ Every write permission in this template is documented below. **ProductX has zero
 
 | Role | Total Permissions | Read-Only | Write | Write Justification |
 |---|---|---|---|---|
-| ProductXWAFRRole | 2 managed policies (`ReadOnlyAccess`, `SecurityAudit`) + 19 inline actions + CUR management policy | All read except 11 WAFR workload management actions + CUR/S3 provisioning | 11 Well-Architected Tool actions + 5 CUR/S3 write actions | WAFR workload management + CUR bucket creation for cost visibility |
+| ProductXWAFRRole | 2 managed policies (`ReadOnlyAccess`, `SecurityAudit`) + 36 inline actions (ComplianceSignalAccess + WAFRWorkloadManagement) + ComputeOptimizerPolicy (17 read) + ManageCURPolicy | All read except 11 WAFR workload management actions + 5 CUR/S3 provisioning actions | 11 Well-Architected Tool actions + 5 CUR/S3 write actions | WAFR workload management + CUR bucket creation for cost visibility |
 | CloudvizArchitectureDiagramRole | 1 managed policy (`ReadOnlyAccess`) | All | None | — |
 | BillingReadOnlyRole | 38 inline actions | All | None | — |
 | ReservedAI-Write | ~65 inline actions | ~62 read | 3 write (`s3:CreateBucket`, `s3:PutBucketPolicy`, `cur:PutReportDefinition`) | CUR provisioning — create S3 bucket for cost data delivery and define the CUR export |

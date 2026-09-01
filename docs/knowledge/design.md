@@ -92,14 +92,14 @@ This is the single authoritative answer to "what does the engine cover?". Rows a
 | Resource type | Right Sizing | Optimize Configuration | Schedule | Manage Idle | Manage Orphaned | Capability tier | Lookback (default / extended) | CloudWatch Period |
 |---|---|---|---|---|---|---|---|---|
 | **EC2 instance** | ✅ CPU, memory, network, GPU | ✅ same-class generation upgrade | ✅ hour-of-week histogram | ✅ non-GPU + GPU criteria | — | Sizing + Idle | 30d / 93d | 300s |
-| **EC2 Auto Scaling group** | ✅ CPU, memory, network | ✅ new-generation type suggestion | — | ✅ all-members criteria | — | Sizing + Idle | 30d / 93d | 300s |
-| **EBS volume** | ✅ IOPS, throughput, size | — | — | ✅ attached, non-root, < 1 op/day | ✅ unattached ≥ **32d** | Sizing + Idle | 30d / 93d (unattached: 32d) | 300s |
-| **ECS service on Fargate** | ✅ CPU, memory (task + container) | — | — | ✅ CPU **and** memory < 1% | — | Sizing + Idle | 30d / 93d | **60s** |
+| **EC2 Auto Scaling group** | ✅ CPU, memory, network | ✅ new-generation type suggestion | — | ✅ all-members criteria, non-GPU + GPU (G/P) | — | Sizing + Idle | 30d / 93d | 300s |
+| **EBS volume** | ✅ IOPS, throughput, size | — | — | ✅ attached, non-root, < 1 op/day | ✅ unattached ≥ **32d** | Sizing + Idle | 30d / 93d (idle extends to **32d** max; unattached: 32d) | 300s |
+| **ECS service on Fargate** | ✅ CPU, memory (task + container) | — | — | ✅ CPU **and** memory < 1% | — | Sizing + Idle | 30d / 93d (idle extends to **32d** max) | **60s** |
 | **Lambda function** | ✅ memory (drives CPU) | — | — | — ¹ | — | Sizing (fully-modeled) | 30d / 93d | 300s |
 | **RDS / Aurora databases** | — | — | — | ✅ | — | Idle-only | 30d | 300s |
-| **NAT Gateway** | — | — | — | ✅ | — | Idle-only | 30d | 300s |
+| **NAT Gateway** | — | — | — | ✅ | — | Idle-only | 30d (association/attachment status: **32d**) | 300s |
 | **DynamoDB (provisioned)** | — | — | — | ✅ table + all GSI levels | — | Idle-only | 30d | 300s |
-| **ElastiCache (Redis/Valkey)** | — | — | — | ✅ node-level, all nodes idle | — | Idle-only | 30d | 300s |
+| **ElastiCache (Redis/Valkey)** | — | — | — | ✅ node-level, all nodes idle | — | Idle-only | 30d | 300s ² |
 | **MemoryDB** | — | — | — | ✅ cluster must be `available` | — | Idle-only | 30d | 300s |
 | **DocumentDB** | — | — | — | ✅ elastic clusters excluded | — | Idle-only | 30d | 300s |
 | **WorkSpaces (Always On)** | — | — | — | ✅ no user connection | — | Idle-only | **63d** | 300s |
@@ -107,12 +107,15 @@ This is the single authoritative answer to "what does the engine cover?". Rows a
 
 ¹ Lambda sits in the fully-modeled tier (it runs the sizing pipeline with an eligibility gate and a findings taxonomy), but **no idle criterion is documented for Lambda** — it is not evaluated by the Idle policy.
 
+² ElastiCache carries a longer analysis latency than every other resource type — **up to 48 hours** rather than the general 24 hours (**Analysis latency** below).
+
 ### Legend & scope note (the two tiers)
 
 - **Sizing + Idle (fully-modeled tier)** — EC2 instance, EC2 Auto Scaling group, EBS volume, ECS service on Fargate, Lambda function. These resources run the **complete rightsizing pipeline** from Part III: eligibility gate → percentile trim → headroom → Step-4 candidate pipeline → resource-specific finding → savings, *plus* their idle checks. They get a full recipe in Part IV with a worked example.
 - **Idle-only (metric-check tier)** — RDS/Aurora, NAT Gateway, DynamoDB, ElastiCache, MemoryDB, DocumentDB, WorkSpaces, SageMaker. These resources are covered by the **Manage Idle** policy only, via their own documented metric checks. There is no sizing pipeline, no candidate ranking, and no performance-risk scoring for them. They are documented in **Part IV — Idle-Only Resources**.
 - **Period** follows `MetricCollector.resolvePeriod`: 60s for ECS-on-Fargate, 300s for everything else (Part III).
-- **Lookback exceptions** — the **32-day** EBS unattached window and the **63-day** WorkSpaces window are documented per-resource exceptions, configurable independently of the general lookback.
+- **Lookback exceptions** — the **32-day** EBS unattached window, the **32-day** NAT Gateway association/attachment-status window, and the **63-day** WorkSpaces window are documented per-resource exceptions, configurable independently of the general lookback.
+- **Idle lookback ceiling (EBS and ECS-on-Fargate)** — for these two resources the **idle** lookback extends to a maximum of **32 days**. The **93-day** extended window applies to **rightsizing** only; it is not available to their idle checks.
 - ✅ = policy applies to this resource type. — = policy does not apply.
 
 ## Supported Resources & Exclusions
@@ -223,6 +226,8 @@ Evaluated **when the volume is attached to an instance**:
 A resource must satisfy **both** the metric requirements (**Part III — Lookback Windows**, plus the per-resource minimums in each Part IV `### Eligibility Gates`) **and** the resource-specific requirements in this section before any recommendation is produced.
 
 Once sufficient metric data exists, analysis can take **up to 24 hours** before recommendations appear. Newly onboarded accounts may therefore show **no recommendations for up to 24 hours**. This is **expected behavior, not an error** — see **Part VI — Error Handling**.
+
+**ElastiCache exception.** For **ElastiCache**, recommendations may take **up to 48 hours** to appear after the resource is first onboarded — double the general latency. Treat a 24-to-48-hour gap on ElastiCache as expected, not as a failure (**Part IV — Idle-Only Resources → ElastiCache**; **Part VI — Error Handling**).
 
 ---
 
@@ -352,7 +357,9 @@ sequenceDiagram
 
 ## Lookback Windows
 
-Product X uses a **30-day default lookback**. This deliberately diverges from the 14-day default common in industry tooling; a longer window captures monthly workload cycles and reduces false positives. Configurable options: **30 days (default)**, with optional shorter or longer windows (an extended **93-day** window is available where more history improves confidence). Some resource-specific windows (the **32-day** EBS unattached window and the **63-day** WorkSpaces window) are documented exceptions called out in their Part IV recipes and are configurable independently of the general lookback.
+Product X uses a **30-day default lookback**. This deliberately diverges from the 14-day default common in industry tooling; a longer window captures monthly workload cycles and reduces false positives. Configurable options: **30 days (default)**, with optional shorter or longer windows (an extended **93-day** window is available where more history improves confidence). Some resource-specific windows (the **32-day** EBS unattached window, the **32-day** NAT Gateway association/attachment-status window, and the **63-day** WorkSpaces window) are documented exceptions called out in their Part IV recipes and are configurable independently of the general lookback.
+
+**The 93-day extended window is a rightsizing window.** For **EBS volumes** and **ECS services on Fargate**, the **idle** lookback extends only to a maximum of **32 days** — extending the idle window beyond 32 days is not supported for those two resources, even though their rightsizing analysis can use the full 93 days (property **P33**).
 
 ## Threshold + Headroom Presets
 
@@ -758,6 +765,43 @@ Each section below is a **self-contained recipe** for one resource type. Mechani
 
 ---
 
+## Idle Criteria Reference (all resource types)
+
+**Purpose.** A single answer to "what makes each resource idle?". Idle rules otherwise live in fourteen places — the `### Idle Criteria` subsection of each fully-modeled recipe plus each entry under **Idle-Only Resources**. This table is a **navigational summary**: every row links to the authoritative detail section, which remains the source of truth for pseudocode, edge cases, and scope qualifiers.
+
+**Coverage.** All **13 idle-capable resource types** appear below. Rows are split by variant where the engine evaluates more than one rule for the same resource (EC2 instance non-GPU/GPU, EC2 Auto Scaling group non-GPU/GPU, EBS idle vs. unattached, ElastiCache node-based vs. serverless, DocumentDB provisioned vs. serverless).
+
+| Resource | Metrics analyzed | Idle criteria | Recommended action | Lookback | Detail |
+|---|---|---|---|---|---|
+| **EC2 instance** — non-GPU | `CPUUtilization`, `NetworkIn`/`NetworkOut` | peak CPU < 5% AND network I/O < 5 MB/day | Verify need; stop or delete | 30d default (93d extended) | **EC2 Instance → Idle Criteria** |
+| **EC2 instance** — GPU (G/P types) | GPU util / encoder / GPU memory, `CPUUtilization`, network | GPU not actively working > 99% of lookback AND GPU encoder unused ≥ 99% of runtime AND GPU memory usage < 5% AND CPU max < 5% AND network < 5 MB/day | Verify need; stop or delete | 30d default (93d extended) | **EC2 Instance → Idle Criteria** |
+| **EC2 Auto Scaling group** — non-GPU members | member `CPUUtilization`, network | **NO** member instance exceeds 5% peak CPU or 5 MB/day network | Scale down to one instance or delete | 30d default (93d extended) | **EC2 Auto Scaling Group → Idle Criteria** |
+| **EC2 Auto Scaling group** — GPU (G/P) members | member GPU util / encoder / GPU memory, `CPUUtilization`, network | **every** member satisfies all five: GPU not actively working > 99% of lookback AND GPU encoder unused ≥ 99% of runtime AND instance-level GPU memory usage < 5% AND CPU max < 5% AND network < 5 MB/day | Scale down to one instance or delete | 30d default (93d extended) | **EC2 Auto Scaling Group → Idle Criteria** |
+| **EBS volume** — idle (attached-but-unused) | `VolumeReadOps`, `VolumeWriteOps` | attached AND **not** a root volume AND read+write operations < 1 per day | Snapshot then delete | 30d default, **32d max** for idle | **EBS Volume → Idle Criteria** |
+| **EBS volume** — unattached (Manage Orphaned) | attachment state (inventory) | not attached to any EC2 instance for the whole window | Snapshot then delete | **32d**, independent of the idle lookback | **EBS Volume → Orphaned / Unattached** |
+| **ECS service on Fargate** | `CPUUtilization`, `MemoryUtilization` | peak CPU **AND** peak memory both < 1% | Reduce or stop the service | 30d default, **32d max** for idle | **ECS Service on Fargate → Idle Criteria** |
+| **Lambda function** | — | **No idle criterion is documented.** Lambda is **not evaluated by the Manage Idle policy** at all. Low-invocation functions are handled by the sizing eligibility gate (< 50 invocations ⇒ `Unavailable` / `Insufficient data`), never by an idle finding | — (no idle finding is ever emitted) | — | **Lambda Function → Idle Criteria** |
+| **RDS (MySQL/PostgreSQL)** | database connections, read/write IOPS, CPU utilization | **not a read replica** AND no database connections AND low CPU usage AND low read/write activity (criteria are deliberately qualitative — no numeric threshold) | Stop for up to 7 days, or snapshot + delete | 30d default | **Idle-Only → RDS & Aurora** |
+| **Aurora (MySQL/PostgreSQL)** | database connections, read/write IOPS, CPU utilization | **not part of a secondary cluster in an Aurora Global Database** AND no database connections AND low CPU usage AND low read/write activity | Stop for up to 7 days, snapshot + delete, or change to `db.serverless` | 30d default | **Idle-Only → RDS & Aurora** |
+| **NAT Gateway** | active connection count, packets in from source, packets in from destination; route-table association | `available` state AND **not associated with any route table** AND no active connection AND no packets in from **both** source and destination | Delete | 30d default for metrics; association / attachment status over **32d** | **Idle-Only → NAT Gateway** |
+| **DynamoDB** | consumed read / write capacity units, at table level and every GSI level | **provisioned tables only** — no consumed read or write capacity units at the **table level AND all GSI levels** | Switch to on-demand, or delete | 30d default | **Idle-Only → DynamoDB** |
+| **ElastiCache** — node-based (provisioned) | new connections, engine CPU, cache hits / misses / get / set commands | **Redis and Valkey only** — no new connections AND engine CPU < 1% AND no cache hits/misses/get/set; evaluated at **node level**, cluster idle **only if all nodes are idle** | Delete | 30d default (analysis latency up to **48h**) | **Idle-Only → ElastiCache** |
+| **ElastiCache** — serverless | processing units, connections, cache hits / misses / get / set commands | **Redis and Valkey only** — no processing units consumed AND no current or new connections AND no cache hits/misses/get/set | Delete | 30d default (analysis latency up to **48h**) | **Idle-Only → ElastiCache** |
+| **MemoryDB** | new connections, engine CPU, keyspace hits / misses | no new connections AND engine CPU < 1% AND no keyspace hits or misses; cluster in **available** status | Delete | 30d default | **Idle-Only → MemoryDB** |
+| **DocumentDB** — provisioned | database connections | **elastic clusters excluded** — no database connections; cluster in **available** status | Stop for up to 7 days, switch to DocumentDB Serverless, or snapshot + delete | 30d default | **Idle-Only → DocumentDB** |
+| **DocumentDB** — serverless | database connections | **elastic clusters excluded** — no database connections; cluster in **available** status | Stop for up to 7 days, or snapshot + delete | 30d default | **Idle-Only → DocumentDB** |
+| **WorkSpaces** | user connection | **Always On only** (Auto Stop and Standby excluded) — no user connection over the window | Switch to Auto Stop, or delete | **63d** | **Idle-Only → WorkSpaces** |
+| **SageMaker endpoint** | invocations | **zero invocations** | Enable scale-to-zero for inference components where supported, or delete | 30d default | **Idle-Only → SageMaker endpoints** |
+
+**Reading the Lookback column.** Unqualified `30d default` means the general lookback from **Part III — Lookback Windows** applies and can be extended per that section. Bold figures (**32d**, **63d**, **48h**) are fixed, resource-specific windows, configurable independently of the general lookback. Two ceilings are easy to conflate and are worth stating plainly:
+
+- **EBS and ECS-on-Fargate idle** extends to **32 days maximum**. The 93-day extended window is a **rightsizing** window and is not available to their idle checks (**P33**).
+- **NAT Gateway** splits its windows: utilization metrics on the 30-day default, association / attachment status on **32 days** (**P34**).
+
+**Lambda is the one deliberate blank.** It sits in the fully-modeled sizing tier but has **no documented idle criterion**, so the Idle policy skips it entirely. That is a scope decision, not a gap in this table (**P35**).
+
+---
+
 ## EC2 Instance
 
 **Applies to policies:** Right Sizing, Optimize Configuration, Schedule, Manage Idle
@@ -1045,18 +1089,34 @@ The same generation-upgrade logic as EC2 applies to the group's member type: fin
 
 ### Idle Criteria
 
-| Metrics analyzed | Idle criteria | Recommended action | Lookback |
-|---|---|---|---|
-| member `CPUUtilization`, network (GPU criteria for GPU members) | Idle iff **NO** instance in the group exceeds 5% peak CPU or 5 MB/day network | Scale down to one instance or delete | 30d default |
+Two variants apply, mirroring the EC2 Instance idle structure. Both are evaluated **across the group's member instances**.
+
+| Variant | Metrics analyzed | Idle criteria | Recommended action | Lookback |
+|---|---|---|---|---|
+| **Non-GPU** | member `CPUUtilization`, `NetworkIn`/`NetworkOut` | Idle iff **NO** instance in the group exceeds 5% peak CPU or 5 MB/day network over the lookback | Scale down to one instance or delete | 30d default |
+| **GPU (G/P member types)** | member GPU util/encoder/memory, `CPUUtilization`, network | Idle iff **every** member instance satisfies all five conditions over the lookback: GPU not actively working > 99% of the lookback AND GPU encoder unused ≥ 99% of the instance's runtime AND instance-level GPU memory usage < 5% AND CPU max < 5% AND network < 5 MB/day | Scale down to one instance or delete | 30d default |
 
 ```pascal
-// EC2 Auto Scaling group
-IF rt = ASG THEN
+// EC2 Auto Scaling group — non-GPU member types
+IF rt = ASG AND NOT usesGpuInstanceTypes(resource) THEN
   // Idle iff NO instance in the group exceeds either threshold
   RETURN NOT EXISTS instance IN resource.instances WHERE
          ( peakCpuUtil(instance, 30d) > 5% OR networkIO(instance, 30d) > 5 MB/day )
 END IF
+
+// EC2 Auto Scaling group — G or P member types
+IF rt = ASG AND usesGpuInstanceTypes(resource) THEN
+  // Idle iff EVERY member instance meets all five GPU/CPU/network conditions
+  RETURN FOR ALL instance IN resource.instances:
+         gpuActiveFraction(instance, 30d) < 1%          // GPU not working > 99% of lookback
+         AND gpuEncoderUnusedFraction(instance) >= 99%  // over the instance's runtime
+         AND gpuMemoryUtil(instance) < 5%               // instance-level GPU memory
+         AND maxCpuUtil(instance, 30d) < 5%
+         AND networkIO(instance, 30d) < 5 MB/day
+END IF
 ```
+
+**Why both variants exist here.** Idle eligibility admits mixed-type groups drawing on the **G and P** families (**Part II — EC2 Auto Scaling group support — idle**), so the GPU rule is required for those groups to be evaluated at all. A group whose members are G or P types is judged by the GPU variant; all other supported groups are judged by the non-GPU variant (property **P32**).
 
 ### Findings & Reasons
 
@@ -1104,7 +1164,7 @@ Current: dynamic-scaling ASG, member type `c5.2xlarge` (8 vCPU, 16 GiB), averagi
 
 **Applies to policies:** Right Sizing, Manage Idle, Manage Orphaned
 **Capability:** Sizing + Idle
-**Lookback:** 30d default (93d extended option); **32d** for the unattached/orphaned determination
+**Lookback:** 30d default (93d extended option for rightsizing; **idle extends to 32d max**); **32d** for the unattached/orphaned determination
 **CloudWatch Period:** 300
 
 ### Metrics Collected
@@ -1171,7 +1231,7 @@ Shared `rightSize` driver (Part III), with the volume catalog standing in for th
 
 | Metrics analyzed | Idle criteria | Recommended action | Lookback |
 |---|---|---|---|
-| `VolumeReadOps`, `VolumeWriteOps` | sum of read/write operations **< 1 per day** over the lookback AND the volume is **NOT a root volume** AND the volume **is attached** | Snapshot then delete | 30d default |
+| `VolumeReadOps`, `VolumeWriteOps` | sum of read/write operations **< 1 per day** over the lookback AND the volume is **NOT a root volume** AND the volume **is attached** | Snapshot then delete | 30d default, extensible to **32d max** |
 
 ```pascal
 // EBS volume — Idle (distinct from Unattached; see Orphaned below)
@@ -1181,6 +1241,8 @@ IF rt = EBS_VOLUME THEN
          AND resource.attachmentState = ATTACHED
 END IF
 ```
+
+**Idle lookback ceiling — 32 days.** The EBS **idle** lookback starts at the 30-day default and can be extended to a maximum of **32 days**. The **93-day** extended window is available to EBS **rightsizing** only and does **not** apply to the idle check (property **P33**). This 32-day idle ceiling is a separate setting from the 32-day unattached window described below — the two happen to share the same figure but are independent determinations.
 
 ### Orphaned / Unattached
 
@@ -1244,7 +1306,7 @@ Current: `gp2`, 500 GiB (3 IOPS/GiB ⇒ 1,500 baseline IOPS), attached 30d conti
 
 **Applies to policies:** Right Sizing, Manage Idle
 **Capability:** Sizing + Idle
-**Lookback:** 30d default (93d extended option); the eligibility gate needs only **≥ 24 hours** of data within it
+**Lookback:** 30d default (93d extended option for rightsizing; **idle extends to 32d max**); the eligibility gate needs only **≥ 24 hours** of data within it
 **CloudWatch Period:** **60**
 
 ### Metrics Collected
@@ -1326,7 +1388,7 @@ Container-level recommendations are only produced when container settings need t
 
 | Metrics analyzed | Idle criteria | Recommended action | Lookback |
 |---|---|---|---|
-| `CPUUtilization`, `MemoryUtilization` | peak CPU **AND** memory utilization both **< 1%** over the lookback | Reduce or stop the service | 30d default |
+| `CPUUtilization`, `MemoryUtilization` | peak CPU **AND** memory utilization both **< 1%** over the lookback | Reduce or stop the service | 30d default, extensible to **32d max** |
 
 ```pascal
 // ECS service on Fargate
@@ -1337,6 +1399,8 @@ END IF
 ```
 
 Note the ECS idle threshold is **1%**, not the 5% used for EC2.
+
+**Idle lookback ceiling — 32 days.** The ECS-on-Fargate **idle** lookback starts at the 30-day default and can be extended to a maximum of **32 days**. The **93-day** extended window is available to ECS **rightsizing** only and does **not** apply to the idle check (property **P33**).
 
 ### Findings & Reasons
 
@@ -1484,12 +1548,14 @@ Current: configured memory **1,024 MB**, **120,000 invocations** over 30d, avera
 
 These resource types are covered by the **Manage Idle** policy only — via their own documented metric checks. They do **not** run the sizing pipeline: no eligibility gate for sizing, no percentile trim, no headroom, no Step-4 candidate ranking, and no performance-risk scoring. The same `IdleAnalyzer` evaluates all of them; the same **Billed Cost** savings metric applies to all (fallback to Unit Rate per Part III).
 
-All use the **30-day default lookback** except WorkSpaces, whose 63-day window is a documented, independently configurable exception. Idle findings take precedence over any other classification. Every recommended action below is **data only** — execution is a write action and out of scope.
+All use the **30-day default lookback** except WorkSpaces, whose 63-day window is a documented, independently configurable exception, and NAT Gateway, whose **association/attachment status** is evaluated over a **32-day** window while its utilization metrics stay on the 30-day default. Idle findings take precedence over any other classification. Every recommended action below is **data only** — execution is a write action and out of scope.
+
+For a single side-by-side view of every idle rule in the engine — these eight services plus the five fully-modeled resources — see **Idle Criteria Reference (all resource types)** at the top of this part.
 
 ### RDS & Aurora databases
 
-- **Metrics analyzed:** database connections, CPU, read/write activity.
-- **Idle criteria:**
+- **Metrics analyzed:** database connections, read/write IOPS, CPU utilization.
+- **Idle criteria:** (the criteria are deliberately **qualitative** for CPU and read/write activity — no fixed numeric threshold is documented, and the engine must not invent one)
   - **RDS (MySQL/PostgreSQL):** **not a read replica**, no DB connections, low CPU, and low read/write over the lookback.
   - **Aurora (MySQL/PostgreSQL):** **not part of a secondary cluster in an Aurora Global Database**, no connections, low CPU, and low read/write over the lookback.
 - **Recommended action:** stop for up to 7 days, snapshot + delete, or change to `db.serverless` (Aurora).
@@ -1498,10 +1564,10 @@ All use the **30-day default lookback** except WorkSpaces, whose 63-day window i
 
 ### NAT Gateway
 
-- **Metrics analyzed:** connection & packet metrics, route-table association.
-- **Idle criteria:** `available` state, **not associated with any route table**, no active connections, and no packets in from source or destination over the lookback.
+- **Metrics analyzed:** active connection count, packets in from source, packets in from destination; plus route-table association / attachment status from resource inventory.
+- **Idle criteria:** `available` state, **not associated with any route table**, **no active connection**, and **no packets in from both source and destination** over the lookback.
 - **Recommended action:** delete.
-- **Lookback:** 30d default.
+- **Lookback:** 30d default for the **utilization metrics** (active connections, packets in from source and destination); the **association / attachment status is evaluated over a 32-day window**, mirroring the EBS unattached treatment. The 32-day attachment window is independent of the utilization lookback — changing the utilization lookback does not change the 32-day association determination (property **P34**).
 
 ### DynamoDB
 
@@ -1516,8 +1582,10 @@ All use the **30-day default lookback** except WorkSpaces, whose 63-day window i
 - **Idle criteria:**
   - **node-based (provisioned):** no new connections, engine CPU **< 1%**, and no cache hits/misses/get/set commands — evaluated at **node level**; a cluster is idle **only if ALL nodes are idle**.
   - **serverless:** no processing units consumed, no current or new connections, and no cache hits/misses/get/set.
+- **Scope:** **Redis and Valkey engines only.**
 - **Recommended action:** delete.
 - **Lookback:** 30d default.
+- **Analysis latency — 48 hours (exception).** ElastiCache is the one resource type that does **not** follow the general "up to 24 hours" analysis latency: it may take **up to 48 hours** for ElastiCache recommendations to appear after the resource is first onboarded. An ElastiCache cluster with no recommendation inside the first 48 hours is **expected behavior, not an error** (**Part II — Analysis latency**; **Part VI — Error Handling → Analysis latency on newly onboarded accounts**).
 
 ### MemoryDB
 
@@ -1530,7 +1598,9 @@ All use the **30-day default lookback** except WorkSpaces, whose 63-day window i
 
 - **Metrics analyzed:** database connections.
 - **Idle criteria:** **provisioned and serverless** clusters (**elastic clusters excluded**) — no database connections over the lookback; cluster in **available** status.
-- **Recommended action:** stop for up to 7 days, DocumentDB Serverless, or snapshot + delete.
+- **Recommended action** — differs by cluster kind:
+  - **Provisioned cluster:** stop for up to 7 days, **or** switch to DocumentDB Serverless, **or** snapshot + delete.
+  - **Serverless cluster:** stop for up to 7 days, **or** snapshot + delete. (Switching to Serverless is not applicable — it already is.)
 - **Lookback:** 30d default.
 
 ### WorkSpaces
@@ -1763,8 +1833,8 @@ The finding vocabulary **differs by resource type** and mixing them is a defect.
 **Recovery:** A **configuration change** — migrating to a supported instance or volume type, moving off Spot, or splitting an unsupported mixed group. Note that an Auto Scaling group excluded from rightsizing may still receive an **idle** finding.
 
 ### Analysis latency on newly onboarded accounts
-**Condition:** A resource meets both the metric requirements and the resource-specific requirements, but analysis has not yet completed. This can take **up to 24 hours**, so newly onboarded accounts may show no recommendations at all for up to 24 hours.
-**Response:** No recommendation is emitted yet. This is **expected behavior, not an error**, and must not be reported as a failure.
+**Condition:** A resource meets both the metric requirements and the resource-specific requirements, but analysis has not yet completed. This can take **up to 24 hours**, so newly onboarded accounts may show no recommendations at all for up to 24 hours. **ElastiCache is the documented exception: up to 48 hours** (**Part II — Analysis latency**; **Part IV — Idle-Only Resources → ElastiCache**).
+**Response:** No recommendation is emitted yet. This is **expected behavior, not an error**, and must not be reported as a failure. The suppression window is 24 hours for every resource type except ElastiCache, where it is 48 hours.
 **Recovery:** None required — recommendations appear once analysis completes on a subsequent run.
 
 ### Lambda inconclusive / insufficient
@@ -1862,10 +1932,10 @@ For all recommendations, `tier = SPECIFIC` ⇒ non-empty `rankedOptions`; `tier 
 For all recommendations: if `policy ∈ {IDLE, ORPHANED, SCHEDULE, LONG_TERM_SAVINGS, SAVINGS_PLANS}` then `savings.metricUsed = BILLED_COST` (or `UNIT_RATE` only via documented fallback); if `policy ∈ {RIGHT_SIZING, OPTIMIZE_CONFIG}` then `savings.metricUsed = UNIT_RATE` (or `BILLED_COST` only via documented fallback); and when the primary metric is unavailable the calculator uses the best available alternative before yielding `NONE`.
 
 ### Property 14: Idle criteria fidelity
-For all resource types, `isIdle` matches the criteria documented in that resource's Part IV `### Idle Criteria` (or its Idle-Only entry): EC2 non-GPU iff peak CPU < 5% AND network < 5 MB/day; GPU EC2 iff all five GPU/CPU/network conditions hold; ASG iff no member exceeds 5% peak CPU or 5 MB/day network; ECS Fargate iff peak CPU AND memory both < 1%; and each idle-only service (RDS/Aurora, NAT Gateway, DynamoDB, ElastiCache, MemoryDB, DocumentDB, WorkSpaces, SageMaker) matches its documented criteria.
+For all resource types, `isIdle` matches the criteria documented in that resource's Part IV `### Idle Criteria` (or its Idle-Only entry), and matches the consolidated **Idle Criteria Reference** table at the top of Part IV: EC2 non-GPU iff peak CPU < 5% AND network < 5 MB/day; GPU EC2 iff all five GPU/CPU/network conditions hold; **non-GPU ASG** iff no member exceeds 5% peak CPU or 5 MB/day network; **GPU (G/P) ASG** iff every member satisfies all five GPU/CPU/network conditions (**P32**); ECS Fargate iff peak CPU AND memory both < 1%; and each idle-only service (RDS/Aurora, NAT Gateway, DynamoDB, ElastiCache, MemoryDB, DocumentDB, WorkSpaces, SageMaker) matches its documented criteria — including their documented scope qualifiers (RDS not a read replica; Aurora not a secondary cluster of a Global Database; DynamoDB provisioned only; ElastiCache Redis/Valkey only; DocumentDB elastic clusters excluded; WorkSpaces Always On only). For RDS and Aurora the CPU and read/write conditions are **qualitative** — no numeric threshold is asserted, and the implementation must not substitute one.
 
 ### Property 15: EBS idle-vs-unattached distinction
-For all EBS volumes: an **Idle** finding requires the volume is attached, is not a root volume, and has < 1 read/write op/day over the lookback; an **Orphaned (unattached)** finding requires the volume is unattached over the 32-day window. The two states are mutually exclusive and neither is derived from the other's window.
+For all EBS volumes: an **Idle** finding requires the volume is attached, is not a root volume, and has < 1 read/write op/day over the idle lookback (30-day default, **32-day maximum** — see **P33**); an **Orphaned (unattached)** finding requires the volume is unattached over the **32-day** unattached window. The two states are mutually exclusive, neither is derived from the other's window, and the two 32-day figures are independent settings that coincide numerically — changing the idle lookback (within its 32-day ceiling) never alters the unattached determination, and vice versa.
 
 ### Property 16: Optimize Configuration preserves class
 For all Optimize Configuration recommendations, the recommended type shares the current hardware class and has vCPU/memory ≥ current (capacity preserved) and effective rate < current.
@@ -1892,7 +1962,7 @@ For all ECS recommendations, any emitted container-size recommendation (CPU size
 For all Lambda functions: configured memory > 1,792 MB ⇒ finding `Unavailable` with reason `Inconclusive`; insufficient metric data ⇒ finding `Unavailable` with reason `Insufficient data`; an emitted `Not optimized` finding carries a Memory under-provisioned or Memory over-provisioned reason.
 
 ### Property 24: 30-day default lookback
-For all analyses without an explicit lookback override, the utilization profile is built over a 30-day window; per-resource documented exceptions (32-day EBS unattached, 63-day WorkSpaces) apply their own windows independently of the default.
+For all analyses without an explicit lookback override, the utilization profile is built over a 30-day window; per-resource documented exceptions (32-day EBS unattached, 32-day NAT Gateway association/attachment status, 63-day WorkSpaces) apply their own windows independently of the default.
 
 ### Property 25: Read-only invariant
 For all policies, the produced recommendation contains no executed state change — `recommendedAction` is descriptive data only; no write API is invoked.
@@ -1904,7 +1974,7 @@ For all rightsizing recommendations, both the **current** instance type and **ev
 For all Auto Scaling groups matching any documented rightsizing exclusion — Spot, mixed types with any instance outside the C/M/R families, ECS or EKS workloads, mixed AMD + Intel, instance weights, mixed x86 + Graviton, mixed platforms, or any unsupported instance type — **no rightsizing recommendation is emitted**; the finding is `UNAVAILABLE` with reason `ASG_UNSUPPORTED_CONFIG`.
 
 ### Property 28: ASG idle-vs-rightsizing asymmetry
-For all Auto Scaling groups, idle eligibility is **strictly broader** than rightsizing eligibility: every rightsizing-eligible group is idle-eligible, and a group excluded from rightsizing (Spot, ECS/EKS workloads, mixed types including the G and P families) may still be idle-eligible and receive an idle finding.
+For all Auto Scaling groups, idle eligibility is **strictly broader** than rightsizing eligibility: every rightsizing-eligible group is idle-eligible, and a group excluded from rightsizing (Spot, ECS/EKS workloads, mixed types including the G and P families) may still be idle-eligible and receive an idle finding. Idle-eligible G/P groups are evaluated by the **GPU idle variant** (**P32**), so broader eligibility never leaves a group without an applicable idle rule.
 
 ### Property 29: Supported EBS volume types
 For all EBS rightsizing recommendations, the volume type ∈ {st1, sc1, gp2, gp3, io1, io2, io2 Block Express}; a previous-generation Magnetic volume yields a data-migration recommendation rather than an in-place resize.
@@ -1914,6 +1984,18 @@ For all analyses with **no** consideration set configured, the candidate pool is
 
 ### Property 31: Future-variant default
 For all configured consideration sets without an explicit override, future variations of the chosen instance families are **included** in the candidate pool.
+
+### Property 32: ASG GPU idle criteria
+For all Auto Scaling groups whose member instance types are drawn from the **G or P** families, the idle determination uses the **GPU variant**, and the group is idle **iff every member instance** satisfies **all five** conditions over the lookback: GPU not actively working for more than 99% of the lookback, GPU encoder unused for ≥ 99% of the instance's runtime, instance-level GPU memory usage < 5%, CPU maximum utilization < 5%, and network utilization < 5 MB/day. If **any** member fails **any** of the five conditions, the group is not idle. For all Auto Scaling groups without G or P member types, the **non-GPU variant** applies instead (no member exceeds 5% peak CPU or 5 MB/day network), and the two variants are never both applied to the same group.
+
+### Property 33: Idle lookback ceiling for EBS and ECS
+For all **EBS volume** and **ECS-service-on-Fargate** idle evaluations, the configured idle lookback lies in the range 30 days (default) to **32 days maximum**; any request to evaluate idle over a window longer than 32 days is rejected or clamped to 32 days, and the **93-day** extended window is never applied to an idle evaluation for these two resources. The 93-day extended window remains available to their **rightsizing** evaluations, so for the same resource the rightsizing window may exceed the idle window.
+
+### Property 34: NAT Gateway attachment-status window
+For all NAT Gateway idle evaluations, the **utilization metrics** (active connection count, packets in from source, packets in from destination) are evaluated over the general lookback (30-day default), while the **route-table association / attachment status** is evaluated over a **32-day** window. The 32-day attachment window is independent of the utilization lookback: changing the utilization lookback does not change the attachment-status determination.
+
+### Property 35: Idle-criteria completeness
+For all resource types marked ✅ under **Manage Idle** in the Part II coverage matrix, a documented idle criterion exists in the consolidated **Idle Criteria Reference** table at the top of Part IV **and** in the resource's own detail section, and the two agree. Conversely, for all resource types **not** marked ✅ under Manage Idle — of which **Lambda** is the only fully-modeled member — the Idle policy is never evaluated and **no idle finding is ever emitted**; a low-invocation Lambda yields an eligibility-gate outcome (`Unavailable` / `Insufficient data`), never `Idle`. The reference table's row count therefore equals the number of idle-capable resource types (13), variant rows included.
 
 ## Dependencies
 

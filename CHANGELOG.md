@@ -20,6 +20,31 @@ Each entry documents a change to the CloudFormation template deployed into custo
 
 ## [2.0] — 2026-08-27
 
+### Changed: Cloudviz Role Now Uses a Custom Scoped Policy (was ReadOnlyAccess)
+
+**What changed:**  
+Both Cloudviz roles — `CloudvizArchitectureDiagramRole` (management account) and `CloudvizMemberRole` (member accounts via StackSet) — now use a custom inline policy (`CloudvizReadOnlyAccess`, ~50 targeted Describe/List/Get actions) instead of the broad AWS `ReadOnlyAccess` managed policy. Source: `docs/knowledge/cloudviz_custom_readonly_policy.json`.
+
+**Why:**  
+Cloudviz only needs to enumerate resource types and their configuration to draw architecture diagrams (EC2, RDS, Lambda, ECS, EKS, ELB, S3 metadata, etc.). It does not need the full read surface of `ReadOnlyAccess`, and in particular does not need data-plane reads. Scoping to the minimum required actions tightens least privilege and reduces the permission footprint customers must review.
+
+**Customer impact:**
+- New customers: Cloudviz role is now provably limited to diagram-relevant read actions
+- Existing customers: Need a stack update to move from `ReadOnlyAccess` to the scoped policy
+
+**Sales talking point:**  
+> "Our diagram tool uses a purpose-built policy limited to ~50 read actions needed to map your architecture — not a broad read-all policy. It cannot read your application data."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | Existing clients need a stack update to apply the scoped Cloudviz policy |
+| Product Manager | Confirm Cloudviz diagram generation works with the scoped action list; add actions if any resource type fails to render |
+| Sales | Update security responses — Cloudviz uses a custom minimal policy, not `ReadOnlyAccess` |
+
+---
+
 ### Added: ComputeOptimizerPolicy (Compute Optimizer fallback)
 
 **What changed:**  

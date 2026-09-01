@@ -101,12 +101,14 @@ The Archera role can read its **own** policy configuration only (`iam:GetRolePol
 
 ## Read Permissions
 
-The template uses two AWS managed policies for read access:
+**ProductX assessment role** uses two AWS managed policies for read access:
 
 - **[ReadOnlyAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/ReadOnlyAccess.html)** — AWS-maintained policy providing read access across services (Describe, Get, List actions only)
 - **[SecurityAudit](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/SecurityAudit.html)** — AWS-maintained policy for security assessment (audit-level access)
 
 These are standard AWS managed policies used by hundreds of third-party tools for read-only cloud assessment.
+
+**Architecture diagram role** (`cloudelligent-assessment-role`) uses a **custom, tightly-scoped read-only policy** — approximately 50 specific `Describe`/`List`/`Get` actions limited to the resource types needed for diagram generation (EC2, RDS, Lambda, ECS, EKS, ELB, S3 metadata, etc.). It does **not** use the broad `ReadOnlyAccess` policy and cannot read application data.
 
 ---
 

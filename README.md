@@ -52,7 +52,7 @@ For AWS Organizations customers, a service-managed StackSet is created as a shel
 | Compute Optimizer (ComputeOptimizerPolicy) | [Compute Optimizer API](https://docs.aws.amazon.com/compute-optimizer/latest/APIReference/) | Optimize Usage (FinOps) — native AWS recommendations used as a fallback/supplement to the ProductX engine |
 | Cost Explorer API (via ReadOnlyAccess) | [Cost Explorer API](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/) | Cost Analytics — spend trends, RI utilization, anomaly detection; Engine savings/pricing |
 | Cost Optimization Hub (via ReadOnlyAccess) | [Cost Optimization Hub API](https://docs.aws.amazon.com/cost-optimization-hub/latest/APIReference/) | Engine AfterDiscounts pricing mode (discount-aware RI/SP rates) |
-| Cloudviz Role | Cloudviz platform requirements (vendor-specified) | Architecture diagram generation for client deliverables |
+| Cloudviz Role | Custom scoped read-only policy (`docs/knowledge/cloudviz_custom_readonly_policy.json`) — vendor-specified minimum for diagram generation | Architecture diagram generation for client deliverables |
 | BillingReadOnlyRole | Cloudelligent internal finance requirements | Monthly cost review per client (WAF Cost Optimization pillar) |
 | ReservedAI Role (Archera) | [Archera CF Template](docs/knowledge/archera-cf-template.yaml) — vendor-specified | Cost visibility for RI/SP analysis + CUR provisioning. Note: RI/SP *purchasing* permissions are in Archera's full template, not this stack. |
 
@@ -79,7 +79,7 @@ Every write permission in this template is documented below. **ProductX has zero
 | Role | Total Permissions | Read-Only | Write | Write Justification |
 |---|---|---|---|---|
 | ProductXWAFRRole | 2 managed policies (`ReadOnlyAccess`, `SecurityAudit`) + 36 inline actions (ComplianceSignalAccess + WAFRWorkloadManagement) + ComputeOptimizerPolicy (17 read) + ManageCURPolicy | All read except 11 WAFR workload management actions + 5 CUR/S3 provisioning actions | 11 Well-Architected Tool actions + 5 CUR/S3 write actions | WAFR workload management + CUR bucket creation for cost visibility |
-| CloudvizArchitectureDiagramRole | 1 managed policy (`ReadOnlyAccess`) | All | None | — |
+| CloudvizArchitectureDiagramRole | Custom inline policy (`CloudvizReadOnlyAccess`, ~50 scoped read actions) | All | None | — |
 | BillingReadOnlyRole | 38 inline actions | All | None | — |
 | ReservedAI-Write | ~65 inline actions | ~62 read | 3 write (`s3:CreateBucket`, `s3:PutBucketPolicy`, `cur:PutReportDefinition`) | CUR provisioning — create S3 bucket for cost data delivery and define the CUR export |
 

@@ -61,7 +61,7 @@ Every action in this policy is already granted by the `ReadOnlyAccess` managed p
 
 **Recommendation: KEEP (not actionable)**
 
-This role creates `cloudelligent-assessment-role` with `ReadOnlyAccess`, trusted by Cloudviz's AWS account (`282762468439`). It exists solely to let Cloudviz generate architecture diagrams.
+This role creates `cloudelligent-assessment-role` with a **custom scoped read-only policy** (`CloudvizReadOnlyAccess`, ~50 targeted Describe/List/Get actions — see `docs/knowledge/cloudviz_custom_readonly_policy.json`), trusted by Cloudviz's AWS account (`282762468439`). It exists solely to let Cloudviz generate architecture diagrams.
 
 **Decision:** Cloudviz remains a required tool. ProductX does not currently support architecture diagram generation, so this role cannot be removed. The role stays in the template.
 

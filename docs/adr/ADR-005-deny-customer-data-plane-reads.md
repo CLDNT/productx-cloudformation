@@ -105,7 +105,6 @@ If verification shows ProductX does not use them, they can be added to the Deny 
 - Sid: DenyCustomerDataPlaneReads
   Effect: Deny
   Action:
-    - s3:GetObjectVersion
     - s3-object-lambda:GetObject
     - dynamodb:GetItem
     - dynamodb:BatchGetItem
@@ -136,12 +135,21 @@ If verification shows ProductX does not use them, they can be added to the Deny 
     - s3:GetObjectVersion
   NotResource:
     - 'arn:aws:s3:::productx-cur-*/*'
+    - 'arn:aws:s3:::reserved-ai-cur-*/*'
+    - 'arn:aws:s3:::reserved-ai-spot-*/*'
     - !If [HasExistingCURBucket, !Sub 'arn:aws:s3:::${ExistingCURBucket}/*', !Ref 'AWS::NoValue']
 ```
 
-Two statements are used because `s3:GetObject`/`s3:GetObjectVersion` need the CUR `NotResource` carve-out, while the rest are denied on all resources. (`s3:GetObjectVersion` appears in both — the second statement's `NotResource` carve-out is the effective one for S3; listing it in the first statement is harmless but could be dropped for tidiness.)
+The second statement carves out **every CUR bucket ProductX legitimately reads**:
+- `productx-cur-*` — CUR that ProductX provisions itself (`ManageCURPolicy`)
+- `reserved-ai-cur-*` and `reserved-ai-spot-*` — the Archera-provisioned buckets scoped in the `ReservedAI-Write` role. This is the standard path when Archera owns the CUR (ADR-001), so ProductX must be able to read them.
+- the specific `ExistingCURBucket` when a non-standard bring-your-own bucket name is supplied at deploy time.
+
+`s3:GetObjectVersion` intentionally appears only in the second statement (not the first) so the CUR `NotResource` carve-out applies to it.
 
 **Critical implementation guardrail:** the Deny targets **content-read actions only**. It must NOT include any `Describe*`, `List*`, or configuration `Get*` action — in particular `s3:GetPublicAccessBlock`, `s3:GetObjectLockConfiguration`, `s3:GetEncryptionConfiguration`, `s3:GetBucketPolicy`, `dynamodb:DescribeTable`, `sqs:GetQueueAttributes`, `kinesis:DescribeStream`, `es:Describe*` — or it would strip signals the scanner needs (re-introducing the Tier 1 fabricated-"Public"-bucket class of failure).
+
+**Asynchronous CUR caveat:** `ExistingCURBucket` can be connected asynchronously (empty at deploy time). If it is empty at deploy, the S3 `NotResource` carve-out only protects the prefix patterns above (`productx-cur-*`, `reserved-ai-cur-*`, `reserved-ai-spot-*`). A bring-your-own CUR bucket with a **non-standard name** connected later would be blocked by the Deny until the stack is updated with that name. **Open question:** is that acceptable, or do we require the CUR bucket name at deploy time whenever the Deny is active? (See open question 5.)
 
 ### Scope of application
 
@@ -158,7 +166,7 @@ Recommend applying the Deny as the **default** for all customers, not just the H
 
 ### Negative
 - ProductX still uses the broad `ReadOnlyAccess` policy, so a customer objecting to `ReadOnlyAccess` *in its entirety* (not just data reads) is not fully satisfied by this change — see Alternative B.
-- The `NotResource` scoping for the bring-your-own-CUR bucket only works cleanly if that bucket name is known at deploy time; CUR can be connected asynchronously (see open question 4).
+- The `NotResource` carve-out covers the standard CUR prefixes (`productx-cur-*`, `reserved-ai-cur-*`, `reserved-ai-spot-*`). A bring-your-own-CUR bucket with a non-standard name only works cleanly if that name is known at deploy time; CUR can be connected asynchronously (see open question 5).
 - Two data-plane reads (`logs:GetLogEvents`/`FilterLogEvents`, `ssm:GetParameter*`) remain allowed pending scanner-code verification; the Deny is not yet exhaustive.
 
 ### Neutral
@@ -194,4 +202,4 @@ Recommend applying the Deny as the **default** for all customers, not just the H
 2. Should the data-plane Deny be the **default** for all customers (recommended) or applied only to customers who request it?
 3. Should the two deferred actions (`logs:GetLogEvents`/`FilterLogEvents`, `ssm:GetParameter*`) be added to the Deny once scanner-code verification confirms they are unused? (Requires the same `*Command()` extraction, filtered to these actions.)
 4. Should the 191-action inventory be checked into the repo as the basis for the Alternative B custom policy, for customers who reject `ReadOnlyAccess` outright?
-5. `ExistingCURBucket` can be connected asynchronously (empty at deploy time). If it is empty at deploy, the `NotResource` only protects `productx-cur-*`. Is that acceptable, or do we require the CUR bucket name at deploy time when the Deny is active?
+5. `ExistingCURBucket` can be connected asynchronously (empty at deploy time). The S3 Deny carve-out now covers the standard CUR prefixes (`productx-cur-*`, `reserved-ai-cur-*`, `reserved-ai-spot-*`), so any bucket matching those is always protected. But if `ExistingCURBucket` is empty at deploy and a non-standard bring-your-own bucket name is connected later, the `NotResource` only protects the prefix patterns — that non-standard bucket would be blocked by the Deny until the stack is updated with its name. Is that acceptable, or do we require the CUR bucket name at deploy time when the Deny is active?

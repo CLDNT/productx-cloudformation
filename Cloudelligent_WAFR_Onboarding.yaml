@@ -140,6 +140,52 @@ Resources:
                   - wellarchitected:ListTagsForResource
                 Resource:
                   - !Sub 'arn:aws:wellarchitected:*:${AWS::AccountId}:workload/*'
+        - PolicyName: DataPlaneReadDeny
+          # ProductX reads resource configuration/metadata, CloudWatch metrics,
+          # Cost Explorer, and Cost & Usage Report (CUR) objects only. It never
+          # reads customer application data. These explicit Denies override the
+          # AWS ReadOnlyAccess managed policy to guarantee no object/item/message
+          # content can be read outside the CUR bucket. Content-read actions
+          # ONLY — never Describe/List/configuration Get actions.
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DenyCustomerDataPlaneReads
+                Effect: Deny
+                Action:
+                  - s3-object-lambda:GetObject
+                  - dynamodb:GetItem
+                  - dynamodb:BatchGetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:PartiQLSelect
+                  - dax:GetItem
+                  - dax:BatchGetItem
+                  - dax:Query
+                  - dax:Scan
+                  - sqs:ReceiveMessage
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - es:ESHttpGet
+                  - es:ESHttpHead
+                  - sdb:Select
+                  - sdb:GetAttributes
+                  - cassandra:Select
+                  - timestream:Select
+                  - qldb:GetBlock
+                  - qldb:GetRevision
+                  - qldb:GetDigest
+                Resource: '*'
+              - Sid: DenyS3ObjectReadOutsideCUR
+                Effect: Deny
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                NotResource:
+                  - 'arn:aws:s3:::productx-cur-*/*'
+                  - 'arn:aws:s3:::reserved-ai-cur-*/*'
+                  - 'arn:aws:s3:::reserved-ai-spot-*/*'
+                  - !If [HasExistingCURBucket, !Sub 'arn:aws:s3:::${ExistingCURBucket}/*', !Ref 'AWS::NoValue']
 
 
   # =============================================================
@@ -695,6 +741,49 @@ Resources:
                           - wellarchitected:UntagResource
                           - wellarchitected:ListTagsForResource
                         Resource: '*'
+                - PolicyName: DataPlaneReadDeny
+                  # Explicit Denies override the AWS ReadOnlyAccess managed policy
+                  # so the member role cannot read customer application data. Member
+                  # accounts read CUR data only via prefix-scoped buckets. Content-read
+                  # actions ONLY — never Describe/List/configuration Get actions.
+                  PolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                      - Sid: DenyCustomerDataPlaneReads
+                        Effect: Deny
+                        Action:
+                          - s3-object-lambda:GetObject
+                          - dynamodb:GetItem
+                          - dynamodb:BatchGetItem
+                          - dynamodb:Query
+                          - dynamodb:Scan
+                          - dynamodb:PartiQLSelect
+                          - dax:GetItem
+                          - dax:BatchGetItem
+                          - dax:Query
+                          - dax:Scan
+                          - sqs:ReceiveMessage
+                          - kinesis:GetRecords
+                          - kinesis:GetShardIterator
+                          - es:ESHttpGet
+                          - es:ESHttpHead
+                          - sdb:Select
+                          - sdb:GetAttributes
+                          - cassandra:Select
+                          - timestream:Select
+                          - qldb:GetBlock
+                          - qldb:GetRevision
+                          - qldb:GetDigest
+                        Resource: '*'
+                      - Sid: DenyS3ObjectReadOutsideCUR
+                        Effect: Deny
+                        Action:
+                          - s3:GetObject
+                          - s3:GetObjectVersion
+                        NotResource:
+                          - 'arn:aws:s3:::productx-cur-*/*'
+                          - 'arn:aws:s3:::reserved-ai-cur-*/*'
+                          - 'arn:aws:s3:::reserved-ai-spot-*/*'
 
           CloudvizMemberRole:
             Type: AWS::IAM::Role

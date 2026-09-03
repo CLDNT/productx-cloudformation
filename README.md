@@ -27,7 +27,7 @@ For AWS Organizations customers, a service-managed StackSet is created as a shel
 
 | # | Resource (Logical ID) | IAM Role Name | Trusted Principal | Business Use Case | Access Level |
 |---|---|---|---|---|---|
-| 1 | `ProductXWAFRRole` | `ProductXWAFRRole` | Cloudelligent ProductX account (`820440428496`) | WAFR assessments, cost optimization engine, compliance scanning, cost data read, workload management | **Read-only** + WAFR workload management |
+| 1 | `ProductXWAFRRole` | `ProductXWAFRRole` | Cloudelligent ProductX account (`820440428496`) | WAFR assessments, cost optimization engine, compliance scanning, cost data read, workload management | **Read-only** (config/metadata + CUR) + WAFR workload management. Explicit `Deny` blocks all customer application-data reads (see `DataPlaneReadDeny`, ADR-005). |
 | 2 | `ComputeOptimizerPolicy` | _(policy on #1)_ | — | Read AWS Compute Optimizer recommendations (fallback source for the ProductX engine) | **Read-only** |
 | 3 | `AllowAssumeMemberRoles` | _(policy on #1)_ | — | Hub-spoke: lets ProductX role in mgmt account assume member account roles | Read (sts:AssumeRole) |
 | 4 | `ManageCURPolicy` | _(policy on #1)_ | — | Create and manage CUR export + S3 delivery bucket for cost visibility | **Write** (scoped to `productx-cur-*`) |
@@ -78,7 +78,7 @@ Every write permission in this template is documented below. **ProductX has zero
 
 | Role | Total Permissions | Read-Only | Write | Write Justification |
 |---|---|---|---|---|
-| ProductXWAFRRole | 2 managed policies (`ReadOnlyAccess`, `SecurityAudit`) + 36 inline actions (ComplianceSignalAccess + WAFRWorkloadManagement) + ComputeOptimizerPolicy (17 read) + ManageCURPolicy | All read except 11 WAFR workload management actions + 5 CUR/S3 provisioning actions | 11 Well-Architected Tool actions + 5 CUR/S3 write actions | WAFR workload management + CUR bucket creation for cost visibility |
+| ProductXWAFRRole | 2 managed policies (`ReadOnlyAccess`, `SecurityAudit`) + 36 inline actions (ComplianceSignalAccess + WAFRWorkloadManagement) + ComputeOptimizerPolicy (17 read) + ManageCURPolicy + `DataPlaneReadDeny` (24 explicit Deny) | All read except 11 WAFR workload management actions + 5 CUR/S3 provisioning actions; customer application-data reads explicitly denied (see `DataPlaneReadDeny`) | 11 Well-Architected Tool actions + 5 CUR/S3 write actions | WAFR workload management + CUR bucket creation for cost visibility |
 | CloudvizArchitectureDiagramRole | Custom inline policy (`CloudvizReadOnlyAccess`, ~50 scoped read actions) | All | None | — |
 | BillingReadOnlyRole | 38 inline actions | All | None | — |
 | ReservedAI-Write | ~65 inline actions | ~62 read | 3 write (`s3:CreateBucket`, `s3:PutBucketPolicy`, `cur:PutReportDefinition`) | CUR provisioning — create S3 bucket for cost data delivery and define the CUR export |
@@ -154,6 +154,7 @@ These allow ProductX to create a Cost & Usage Report and its delivery bucket for
 |---|---|
 | Confused-deputy protection | ProductX: per-client `ExternalId` (unique, issued by platform). Archera: static ExternalId. Cloudviz: static ExternalId. |
 | Least privilege | ProductX CUR/S3 write is prefix-scoped (`productx-cur-*`). Archera write is prefix-scoped (`reserved-ai-*`). All roles deny by default. |
+| Data-plane read Deny (ADR-005) | `ProductXWAFRRole` (and its member-account role) carry an explicit `DataPlaneReadDeny` policy that denies all customer application-data reads — S3 object contents (except CUR buckets), DynamoDB/DAX items, SQS messages, Kinesis records, OpenSearch/SimpleDB/Keyspaces/Timestream/QLDB data. Explicit Deny overrides `ReadOnlyAccess`. ProductX reads only resource **configuration/metadata**, CloudWatch metrics, Cost Explorer, and CUR objects. |
 | No long-term credentials | Cross-account assumed roles only. No access keys. |
 | Blast radius isolation | Each role trusts exactly one principal. Compromise of one platform cannot escalate to another. |
 | Org deployment | Service-managed StackSet created as a shell. SA manually adds stack instances to target OUs/accounts. Stack instances must also be manually deleted to remove member-account roles. `AutoDeployment: Enabled` means new accounts joining targeted OUs will receive roles automatically after initial setup. |
@@ -191,7 +192,7 @@ These allow ProductX to create a Cost & Usage Report and its delivery bucket for
 
 - ❌ Create, modify, or delete any customer infrastructure (EC2, RDS, VPC, etc.)
 - ❌ Create S3 buckets outside the `productx-cur-*` namespace (CUR delivery only)
-- ❌ Access customer application data (databases, object storage contents beyond CUR)
+- ❌ Access customer application data — S3 object contents (beyond CUR), DynamoDB/DAX items, SQS messages, Kinesis records, OpenSearch/SimpleDB/Keyspaces/Timestream/QLDB data — **enforced by an explicit IAM `Deny` (`DataPlaneReadDeny`, ADR-005), not just convention**
 - ❌ Modify IAM policies, users, or roles (beyond Archera's self-inspection of its own role)
 - ❌ Purchase Reserved Instances or Savings Plans (that requires Archera's full template, deployed separately)
 - ❌ Send data outside of AWS (all operations are AWS API calls within the customer's account)

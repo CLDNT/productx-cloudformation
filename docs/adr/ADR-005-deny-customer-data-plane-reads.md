@@ -1,9 +1,11 @@
 # ADR-005: Data-Plane Read Restriction Under a HIPAA Customer Constraint — Keep ReadOnlyAccess, Deny Customer-Data Reads
 
-Status: Proposed  
+Status: Accepted  
 Date: 2026-09-02  
+Accepted: 2026-09-03  
 Author: Haider Zaidi  
-Reviewers: CEO, COO, Product Manager, Solutions Architects
+Reviewers: CEO, COO, Product Manager, Solutions Architects  
+Scope decision: Applied as the **default for all customers** (not HIPAA-only).
 
 ## Context
 
@@ -182,12 +184,12 @@ Recommend applying the Deny as the **default** for all customers, not just the H
 
 ## Implementation
 
-1. Add the `DenyCustomerDataPlaneReads` and `DenyS3ObjectReadOutsideCUR` statements (above) as an inline policy on `ProductXWAFRRole` and `ProductXWAFRMemberRole` (StackSet member template).
-2. Verify the Deny lists **content-read actions only** — cross-check against configuration/metadata actions (`Describe*`, `List*`, config `Get*`) to ensure none are caught, especially the Tier 1 S3 config actions.
-3. Complete scanner-code verification for the two deferred actions (`logs:GetLogEvents`/`FilterLogEvents`, `ssm:GetParameter*`); add to the Deny if unused.
-4. Validate: with the Deny in place, confirm (a) CUR ingestion still works, (b) S3 public-access-block/encryption signals still populate (no fabricated "Public" findings), (c) Lambda memory recipe (Logs Insights) and RDS swap evidence (PI) still work, (d) Cost Explorer / cost-governance signals still work, (e) a DynamoDB `GetItem` / SQS `ReceiveMessage` / non-CUR `s3:GetObject` is denied.
-5. Decide scope (open question 2): HIPAA-customer-only vs. default-for-all.
-6. Update `README.md` (Write Permission Tracker + Security Controls — note the data-plane-read Deny), `CHANGELOG.md`, and `CUSTOMER_SECURITY_REFERENCE.md` (state explicitly that ProductX cannot read customer application data — S3 object contents, DynamoDB items, SQS messages, Kinesis records, etc. — a strong HIPAA talking point).
+1. ✅ **Done** — Added the `DataPlaneReadDeny` inline policy (`DenyCustomerDataPlaneReads` + `DenyS3ObjectReadOutsideCUR` statements) to `ProductXWAFRRole` and to `ProductXWAFRMemberRole` in the StackSet member template (`Cloudelligent_WAFR_Onboarding.yaml`). The management role's S3 carve-out includes the optional `ExistingCURBucket`; the member role uses the prefix carve-outs only (no `ExistingCURBucket` param in the member template).
+2. ✅ **Done** — Verified via template parse that the Deny lists **content-read actions only** (24 mgmt / 24 member): no `Describe*`, `List*`, or config `Get*` (including `s3:GetPublicAccessBlock`, `s3:GetObjectLockConfiguration`, `s3:GetEncryptionConfiguration`, `s3:GetBucketPolicy`) is present, and none of `cloudwatch:*`/`logs:*`/`pi:*`/`ce:*` is caught.
+3. ⏳ **Deferred (not blocking)** — Scanner-code verification for `logs:GetLogEvents`/`FilterLogEvents` and `ssm:GetParameter*`; add to the Deny in a follow-up if unused.
+4. ⏳ **Pending deploy-time validation** — After deploy, confirm (a) CUR ingestion still works, (b) S3 public-access-block/encryption signals still populate (no fabricated "Public" findings), (c) Lambda memory recipe (Logs Insights) and RDS swap evidence (PI) still work, (d) Cost Explorer / cost-governance signals still work, (e) a DynamoDB `GetItem` / SQS `ReceiveMessage` / non-CUR `s3:GetObject` is denied. IAM Policy Simulator against the deployed role is the recommended check.
+5. ✅ **Decided** — Scope: applied as the **default for all customers** (open question 2 resolved).
+6. ✅ **Done** — Updated `README.md`, `CHANGELOG.md`, and `CUSTOMER_SECURITY_REFERENCE.md`.
 
 ## Verification
 
@@ -196,10 +198,9 @@ Recommend applying the Deny as the **default** for all customers, not just the H
 - Tier 1 (2 actions) confirmed to produce false security findings via `storage.ts:77-91` → `signals/storage.ts:16` → `resource-catalog.ts:533`.
 - Engine design doc confirms `s3:GetObject` is used only for the CUR bucket; no scanner path reads general object contents.
 
-## Questions for Review
+## Open Questions (post-acceptance)
 
-1. Is the HIPAA customer's objection specifically customer-data reads (→ this Deny), or `ReadOnlyAccess` in its entirety (→ Alternative B)? Confirm scope with their security team.
-2. Should the data-plane Deny be the **default** for all customers (recommended) or applied only to customers who request it?
-3. Should the two deferred actions (`logs:GetLogEvents`/`FilterLogEvents`, `ssm:GetParameter*`) be added to the Deny once scanner-code verification confirms they are unused? (Requires the same `*Command()` extraction, filtered to these actions.)
-4. Should the 191-action inventory be checked into the repo as the basis for the Alternative B custom policy, for customers who reject `ReadOnlyAccess` outright?
-5. `ExistingCURBucket` can be connected asynchronously (empty at deploy time). The S3 Deny carve-out now covers the standard CUR prefixes (`productx-cur-*`, `reserved-ai-cur-*`, `reserved-ai-spot-*`), so any bucket matching those is always protected. But if `ExistingCURBucket` is empty at deploy and a non-standard bring-your-own bucket name is connected later, the `NotResource` only protects the prefix patterns — that non-standard bucket would be blocked by the Deny until the stack is updated with its name. Is that acceptable, or do we require the CUR bucket name at deploy time when the Deny is active?
+1. **Resolved.** Scope decided: the Deny is applied as the **default for all customers**, which also satisfies the HIPAA customer. If any customer objects to `ReadOnlyAccess` *in its entirety* (not just data reads), escalate to Alternative B for that customer.
+2. **Open (non-blocking).** Should the two deferred actions (`logs:GetLogEvents`/`FilterLogEvents`, `ssm:GetParameter*`) be added to the Deny once scanner-code verification confirms they are unused? (Requires the same `*Command()` extraction, filtered to these actions.)
+3. **Open.** Should the 191-action inventory be checked into the repo as the basis for the Alternative B custom policy, for customers who reject `ReadOnlyAccess` outright?
+4. **Open (operational).** `ExistingCURBucket` can be connected asynchronously (empty at deploy time). The S3 Deny carve-out covers the standard CUR prefixes (`productx-cur-*`, `reserved-ai-cur-*`, `reserved-ai-spot-*`), so any bucket matching those is always protected. But if `ExistingCURBucket` is empty at deploy and a **non-standard** bring-your-own bucket name is connected later, the `NotResource` only protects the prefix patterns — that non-standard bucket would be blocked by the Deny until the stack is updated with its name. Acceptable, or do we require the CUR bucket name at deploy time when the Deny is active? (Recommended mitigation: document that non-standard CUR buckets must be supplied at deploy time.)

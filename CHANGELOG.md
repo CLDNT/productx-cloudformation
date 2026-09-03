@@ -18,6 +18,40 @@ Each entry documents a change to the CloudFormation template deployed into custo
 
 ---
 
+## [2.1] — 2026-09-03
+
+### Added: Explicit Deny on Customer Application-Data Reads (`DataPlaneReadDeny`, ADR-005)
+
+**What changed:**  
+`ProductXWAFRRole` (management account) and `ProductXWAFRMemberRole` (member accounts via StackSet) now carry a new inline policy, `DataPlaneReadDeny`, with two `Deny` statements:
+- `DenyCustomerDataPlaneReads` — denies content reads across DynamoDB/DAX (items), SQS (message bodies), Kinesis (records), OpenSearch, SimpleDB, Keyspaces, Timestream, QLDB, and S3 Object Lambda.
+- `DenyS3ObjectReadOutsideCUR` — denies `s3:GetObject`/`s3:GetObjectVersion` everywhere **except** the CUR buckets ProductX legitimately reads (`productx-cur-*`, `reserved-ai-cur-*`, `reserved-ai-spot-*`, and a supplied `ExistingCURBucket`).
+
+An explicit IAM `Deny` overrides the `Allow` in the `ReadOnlyAccess` managed policy, so this is a hard guarantee, not a convention. The Deny targets **content-read actions only** — it does not touch configuration/metadata reads (`Describe*`/`List*`/config `Get*`), CloudWatch metrics, CloudWatch Logs Insights, Performance Insights, or Cost Explorer, all of which ProductX depends on.
+
+**Why:**  
+A HIPAA-covered prospect objected that `ReadOnlyAccess` grants `s3:GetObject` (potential PHI exposure). Analysis confirmed ProductX has **no functional need** to read customer application data — the WAFR scanner reads resource *configuration*, and the only object read it needs is the CUR (cost) data, which is granted by dedicated prefix-scoped policies, not `ReadOnlyAccess`. We therefore deny customer-data reads outright and apply it as the **default for all customers**, not just the HIPAA one.
+
+**Customer impact:**
+- New customers: ProductX is provably unable to read application data (S3 object contents outside CUR, database items, queue messages, stream records) — enforced by IAM, verifiable in the template.
+- Existing customers: Need a stack update to apply the new Deny policy. **No loss of ProductX functionality** — WAFR findings, cost analytics, and right-sizing all rely on config/metadata, metrics, and CUR access, none of which are affected.
+- HIPAA/regulated customers: This directly answers the "can your tool read our PHI?" question with "no — it is denied at the IAM level."
+
+**Sales talking point:**  
+> "ProductX cannot read your application data — not your S3 object contents, database records, queue messages, or stream data. This is enforced by an explicit IAM Deny that overrides the AWS read policy, so it's a hard technical guarantee your security team can verify in the template. ProductX reads only resource configuration, performance metrics, and your cost data."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | Existing clients need a stack update to apply `DataPlaneReadDeny`. After deploy, validate via IAM Policy Simulator that config reads / metrics / CUR still work and object/item reads are denied. |
+| Product Manager | Confirm no scanner code path reads `logs:GetLogEvents`/`FilterLogEvents` or `ssm:GetParameter*` values (raw log events / SecureString params). If unused, they will be added to the Deny in a follow-up (ADR-005 open question 2). |
+| Sales | Use the data-plane Deny as a security differentiator, especially for HIPAA/regulated prospects. |
+
+**Reference:** [ADR-005](docs/adr/ADR-005-deny-customer-data-plane-reads.md) — full 191-action analysis, the rejected ViewOnlyAccess alternative, and the CUR carve-out rationale.
+
+---
+
 ## [2.0] — 2026-08-27
 
 ### Changed: Cloudviz Role Now Uses a Custom Scoped Policy (was ReadOnlyAccess)

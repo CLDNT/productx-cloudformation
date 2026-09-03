@@ -24,7 +24,7 @@ For AWS Organizations, a StackSet extends coverage to member accounts.
 
 | # | IAM Role | Purpose | Access Level |
 |---|---|---|---|
-| 1 | `ProductXWAFRRole` | WAFR assessments, cost optimization, compliance scanning, cost visibility | Read-only + Well-Architected Tool workload management + CUR provisioning |
+| 1 | `ProductXWAFRRole` | WAFR assessments, cost optimization, compliance scanning, cost visibility | Read-only (config/metadata + cost data; application-data reads explicitly denied) + Well-Architected Tool workload management + CUR provisioning |
 | 2 | `cloudelligent-assessment-role` | Architecture diagram generation | Read-only |
 | 3 | `BillingReadOnlyRole` | Billing analytics and invoice visibility | Read-only |
 | 4 | `ReservedAI-Write` | Cost data export provisioning (for RI/SP analysis tooling) | Read + limited write (scoped) |
@@ -101,12 +101,21 @@ The Archera role can read its **own** policy configuration only (`iam:GetRolePol
 
 ## Read Permissions
 
-**ProductX assessment role** uses two AWS managed policies for read access:
+**ProductX assessment role** uses two AWS managed policies for read access, **narrowed by an explicit Deny**:
 
 - **[ReadOnlyAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/ReadOnlyAccess.html)** — AWS-maintained policy providing read access across services (Describe, Get, List actions only)
 - **[SecurityAudit](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/SecurityAudit.html)** — AWS-maintained policy for security assessment (audit-level access)
 
 These are standard AWS managed policies used by hundreds of third-party tools for read-only cloud assessment.
+
+**Explicit data-access Deny.** Because `ReadOnlyAccess` is broad, the ProductX role also carries an explicit IAM `Deny` policy (`DataPlaneReadDeny`) that **blocks all reads of your application data**, overriding the managed policy:
+
+- **S3 object contents** — denied everywhere except the Cost & Usage Report (cost data) buckets ProductX is explicitly configured to read
+- **Database records** — DynamoDB and DAX item reads (`GetItem`, `Query`, `Scan`, etc.), SimpleDB, Keyspaces, Timestream, QLDB
+- **Messaging and streaming data** — SQS message bodies, Kinesis stream records
+- **Search data** — OpenSearch document reads
+
+ProductX reads only **resource configuration and metadata** (how resources are set up), **performance metrics** (CloudWatch), and your **cost data** (Cost Explorer + CUR). It **cannot** read the contents of your objects, databases, queues, or streams. Because this is an explicit IAM `Deny`, it is a hard technical guarantee your security team can verify directly in the template — not a matter of trust or convention. This is particularly relevant for regulated data (e.g. PHI under HIPAA): ProductX has no ability to read it.
 
 **Architecture diagram role** (`cloudelligent-assessment-role`) uses a **custom, tightly-scoped read-only policy** — approximately 50 specific `Describe`/`List`/`Get` actions limited to the resource types needed for diagram generation (EC2, RDS, Lambda, ECS, EKS, ELB, S3 metadata, etc.). It does **not** use the broad `ReadOnlyAccess` policy and cannot read application data.
 
@@ -116,6 +125,7 @@ These are standard AWS managed policies used by hundreds of third-party tools fo
 
 | Control | How It's Implemented |
 |---|---|
+| **No application-data access** | An explicit IAM `Deny` blocks reads of S3 object contents (outside cost-report buckets), database records, queue messages, and stream data. Overrides the AWS read policy — verifiable in the template. |
 | **Confused-deputy protection** | Per-customer `ExternalId` required for role assumption. Prevents unauthorized cross-account access. |
 | **No long-term credentials** | All access via cross-account IAM role assumption. No access keys, no stored secrets. |
 | **Prefix-scoped writes** | S3 and CUR writes are locked to specific naming prefixes. Cannot affect any other bucket or report. |
@@ -129,7 +139,7 @@ These are standard AWS managed policies used by hundreds of third-party tools fo
 
 - ❌ Create, modify, or delete any customer infrastructure (EC2, RDS, VPC, Lambda, etc.)
 - ❌ Create S3 buckets outside the `productx-cur-*` or `reserved-ai-*` namespaces
-- ❌ Access customer application data (database contents, application objects, secrets)
+- ❌ Access customer application data (database records, object contents, queue/stream data, secrets) — **blocked by an explicit IAM `Deny`, not just convention**
 - ❌ Modify any IAM policies, users, or roles in your account
 - ❌ Purchase Reserved Instances or Savings Plans
 - ❌ Send data outside of AWS (all operations are AWS API calls within your account)

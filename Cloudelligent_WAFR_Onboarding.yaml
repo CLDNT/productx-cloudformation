@@ -1,3 +1,7 @@
+ # =============================================================
+  # Version: v1.0.0
+  # Dated: 2026-09-09
+  # =============================================================
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   Cloudelligent WAFR Onboarding stack. Combines ProductX WAFR cross-account

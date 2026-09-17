@@ -1,8 +1,8 @@
 # Cloudelligent Onboarding Stack — Customer Security Reference
 
 **Template:** `Cloudelligent_WAFR_Onboarding.yaml`  
-**Version:** 2.0  
-**Date:** August 2026
+**Version:** 2.2  
+**Date:** September 2026
 
 ---
 
@@ -30,7 +30,6 @@ For AWS Organizations, a StackSet extends coverage to member accounts.
 | 4 | `ReservedAI-Write` | Cost data export provisioning (for RI/SP analysis tooling) | Read + limited write (scoped) |
 
 Additional conditional resources:
-- **ComputeOptimizerPolicy** — policy granting read-only access to AWS Compute Optimizer recommendations (supplements Cloudelligent's own optimization analysis)
 - **AllowAssumeMemberRoles** — policy enabling the ProductX role to assume matching roles in member accounts (org mode only)
 - **ManageCURPolicy** — policy enabling ProductX to create a Cost & Usage Report and delivery bucket
 - **ExistingCURBucketPolicy** — policy enabling ProductX to read an existing CUR bucket (if provided)

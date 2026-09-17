@@ -193,39 +193,6 @@ Resources:
 
 
   # =============================================================
-  # Compute Optimizer Policy (ProductX)
-  # =============================================================
-  ComputeOptimizerPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: ProductXComputeOptimizer
-      Roles:
-        - !Ref ProductXWAFRRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - compute-optimizer:DescribeRecommendationExportJobs
-              - compute-optimizer:GetAutoScalingGroupRecommendations
-              - compute-optimizer:GetEBSVolumeRecommendations
-              - compute-optimizer:GetEC2InstanceRecommendations
-              - compute-optimizer:GetEC2RecommendationProjectedMetrics
-              - compute-optimizer:GetECSServiceRecommendationProjectedMetrics
-              - compute-optimizer:GetECSServiceRecommendations
-              - compute-optimizer:GetEffectiveRecommendationPreferences
-              - compute-optimizer:GetEnrollmentStatus
-              - compute-optimizer:GetEnrollmentStatusesForOrganization
-              - compute-optimizer:GetIdleRecommendations
-              - compute-optimizer:GetLambdaFunctionRecommendations
-              - compute-optimizer:GetLicenseRecommendations
-              - compute-optimizer:GetRDSDatabaseRecommendationProjectedMetrics
-              - compute-optimizer:GetRDSDatabaseRecommendations
-              - compute-optimizer:GetRecommendationPreferences
-              - compute-optimizer:GetRecommendationSummaries
-            Resource: '*'
-
-  # =============================================================
   # Allow Assume Member Account Roles (org mode only)
   # =============================================================
   AllowAssumeMemberRoles:
@@ -661,29 +628,6 @@ Resources:
                           - securityhub:DescribeHub
                           - access-analyzer:ListAnalyzers
                           - access-analyzer:ListFindings
-                        Resource: '*'
-                - PolicyName: ComputeOptimizerAccess
-                  PolicyDocument:
-                    Version: '2012-10-17'
-                    Statement:
-                      - Effect: Allow
-                        Action:
-                          - compute-optimizer:DescribeRecommendationExportJobs
-                          - compute-optimizer:GetAutoScalingGroupRecommendations
-                          - compute-optimizer:GetEBSVolumeRecommendations
-                          - compute-optimizer:GetEC2InstanceRecommendations
-                          - compute-optimizer:GetEC2RecommendationProjectedMetrics
-                          - compute-optimizer:GetECSServiceRecommendationProjectedMetrics
-                          - compute-optimizer:GetECSServiceRecommendations
-                          - compute-optimizer:GetEffectiveRecommendationPreferences
-                          - compute-optimizer:GetEnrollmentStatus
-                          - compute-optimizer:GetIdleRecommendations
-                          - compute-optimizer:GetLambdaFunctionRecommendations
-                          - compute-optimizer:GetLicenseRecommendations
-                          - compute-optimizer:GetRDSDatabaseRecommendationProjectedMetrics
-                          - compute-optimizer:GetRDSDatabaseRecommendations
-                          - compute-optimizer:GetRecommendationPreferences
-                          - compute-optimizer:GetRecommendationSummaries
                         Resource: '*'
                 - PolicyName: WAFRWorkloadManagement
                   PolicyDocument:

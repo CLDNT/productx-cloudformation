@@ -1,7 +1,7 @@
-# Cloudelligent WAFR Onboarding Stack — Template Reference
+# Cloudelligent Discovery Role — Template Reference
 
 **Template:** `Cloudelligent_WAFR_Onboarding.yaml`  
-**Version:** 2.3  
+**Version:** 2.4  
 **Last Updated:** 2026-09-17  
 **Owner:** Cloudelligent Product X Team
 
@@ -9,15 +9,17 @@
 
 ## Purpose
 
-This CloudFormation template is deployed into each customer's AWS Management Account during onboarding. It creates the IAM roles that allow Cloudelligent's tooling to:
+This CloudFormation template is deployed into each customer's AWS Management Account during onboarding. It creates read-only cross-account IAM roles that allow Cloudelligent's tooling to:
 
-1. Run AWS Well-Architected Framework reviews (ProductX)
+1. Run AWS Well-Architected Framework (WAFR) reviews (ProductX)
 2. Read cost data for FinOps visibility (ProductX + Archera)
 3. Provision CUR exports for cost analytics (ProductX + Archera)
-4. Generate architecture diagrams (Cloudviz)
+4. Perform read-only resource discovery for diagram generation (Cloudviz)
 5. Provide billing analytics (internal finance)
 
 > **Note:** RI/SP *purchasing* permissions are deployed via Archera's own separate template (`docs/knowledge/archera-cf-template.yaml`), not this stack.
+
+> **De-branding (ADR-006):** The customer-facing template is de-branded — its `Description`, comments, and parameter/output descriptions do not name third-party tools; logical IDs use a neutral `Cloudelligent*` scheme. This README is the internal reference and retains vendor names (Cloudviz, Archera) for clarity. **Logical ID ≠ deployed RoleName**: only the Cloudviz role's `RoleName` was changed (to `CloudelligentDiscoveryRole`); all other deployed `RoleName` values are unchanged to avoid breaking integrations.
 
 For AWS Organizations customers, a service-managed StackSet automatically deploys member-account roles to a single OU (or the org root) supplied by the SA via the `OrgUnitId` parameter. Accounts joining that OU later are covered automatically.
 
@@ -27,14 +29,16 @@ For AWS Organizations customers, a service-managed StackSet automatically deploy
 
 | # | Resource (Logical ID) | IAM Role Name | Trusted Principal | Business Use Case | Access Level |
 |---|---|---|---|---|---|
-| 1 | `ProductXWAFRRole` | `ProductXWAFRRole` | Cloudelligent ProductX account (`820440428496`) | WAFR assessments, cost optimization engine, compliance scanning, cost data read, workload management | **Read-only** (config/metadata + CUR) + WAFR workload management. Explicit `Deny` blocks all customer application-data reads (see `DataPlaneReadDeny`, ADR-005). |
-| 2 | `AllowAssumeMemberRoles` | _(policy on #1)_ | — | Hub-spoke: lets ProductX role in mgmt account assume member account roles | Read (sts:AssumeRole) |
-| 3 | `ManageCURPolicy` | _(policy on #1)_ | — | Create and manage CUR export + S3 delivery bucket for cost visibility | **Write** (scoped to `productx-cur-*`) |
-| 4 | `ExistingCURBucketPolicy` | _(policy on #1)_ | — | Read CUR data from an existing S3 bucket (e.g. Archera's) for cost visibility | **Read-only** |
-| 5 | `CloudvizArchitectureDiagramRole` | `cloudelligent-assessment-role` | Cloudviz account (`282762468439`) | Auto-generate architecture diagrams from live AWS resources | **Read-only** |
-| 6 | `BillingReadOnlyRole` | `BillingReadOnlyRole` | Cloudelligent finance (`898668804275`) | Internal billing analytics, invoice access, Trusted Advisor checks | **Read-only** |
-| 7 | `ReservedAIRole` | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility, CUR creation, spot data feeds | **Read + Write** (scoped) |
+| 1 | `CloudelligentWAFRRole` | `ProductXWAFRRole` | Cloudelligent ProductX account (`820440428496`) | WAFR assessments, cost optimization engine, compliance scanning, cost data read, workload management | **Read-only** (config/metadata + CUR) + WAFR workload management. Explicit `Deny` blocks all customer application-data reads (see `DataPlaneReadDeny`, ADR-005). |
+| 2 | `AllowAssumeMemberRoles` | _(policy on #1, name `ProductXWAFRAssumeMemberRoles`)_ | — | Hub-spoke: lets the ProductX role in the mgmt account assume member-account roles | Read (sts:AssumeRole) |
+| 3 | `ManageCURPolicy` | _(policy on #1, name `ProductXManageCUR`)_ | — | Create and manage CUR export + S3 delivery bucket for cost visibility | **Write** (scoped to `productx-cur-*`) |
+| 4 | `ExistingCURBucketPolicy` | _(policy on #1, name `ProductXReadExistingCURBucket`)_ | — | Read CUR data from an existing S3 bucket (e.g. Archera's) for cost visibility | **Read-only** |
+| 5 | `CloudelligentDiscoveryRole` | `CloudelligentDiscoveryRole` | Cloudviz account (`282762468439`) | Read-only resource discovery for architecture diagram generation | **Read-only** (`CloudelligentDiscoveryReadOnlyAccess`, 52 actions) |
+| 6 | `CloudelligentBillingRole` | `BillingReadOnlyRole` | Cloudelligent finance (`898668804275`) | Internal billing analytics, invoice access, Trusted Advisor checks | **Read-only** |
+| 7 | `CloudelligentFinOpsRole` | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility, CUR creation, spot data feeds | **Read + Write** (scoped) |
 | 8 | `CloudelligentOnboardingMemberStackSet` | _(StackSet)_ | — | Auto-deploys member-account roles to the OU supplied in `OrgUnitId` (current + future accounts) | N/A (deployment vehicle) |
+
+> **Logical ID vs. RoleName:** the left column is the CloudFormation **logical ID** (de-branded per ADR-006). The **IAM Role Name** column is what is actually created in the customer account. Only the Cloudviz role's deployed name changed (`cloudelligent-assessment-role` → `CloudelligentDiscoveryRole`); the ProductX, Billing, and Archera roles keep their existing deployed names to avoid breaking third-party/internal integrations that reference them.
 
 ---
 
@@ -50,9 +54,9 @@ For AWS Organizations customers, a service-managed StackSet automatically deploy
 | Cost Optimization Engine (via ReadOnlyAccess) | [ProductX Cost Optimization Engine Design](docs/knowledge/design.md) — Part VI Dependencies | Optimize Usage (FinOps) — rightsizing, idle, orphaned, scheduling, optimize configuration, optimize rate |
 | Cost Explorer API (via ReadOnlyAccess) | [Cost Explorer API](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/) | Cost Analytics — spend trends, RI utilization, anomaly detection; Engine savings/pricing |
 | Cost Optimization Hub (via ReadOnlyAccess) | [Cost Optimization Hub API](https://docs.aws.amazon.com/cost-optimization-hub/latest/APIReference/) | Engine AfterDiscounts pricing mode (discount-aware RI/SP rates) |
-| Cloudviz Role | Custom scoped read-only policy (`docs/knowledge/cloudviz_custom_readonly_policy.json`) — vendor-specified minimum for diagram generation | Architecture diagram generation for client deliverables |
+| Discovery Role (Cloudviz) | Custom scoped read-only policy `CloudelligentDiscoveryReadOnlyAccess` (`docs/knowledge/cloudviz_custom_readonly_policy.json`) — vendor-specified minimum for diagram generation | Architecture diagram generation for client deliverables |
 | BillingReadOnlyRole | Cloudelligent internal finance requirements | Monthly cost review per client (WAF Cost Optimization pillar) |
-| ReservedAI Role (Archera) | [Archera CF Template](docs/knowledge/archera-cf-template.yaml) — vendor-specified | Cost visibility for RI/SP analysis + CUR provisioning. Note: RI/SP *purchasing* permissions are in Archera's full template, not this stack. |
+| FinOps Role (Archera) | [Archera CF Template](docs/knowledge/archera-cf-template.yaml) — vendor-specified | Cost visibility for RI/SP analysis + CUR provisioning. Note: RI/SP *purchasing* permissions are in Archera's full template, not this stack. |
 
 ### Business Use Case to Permission Mapping
 
@@ -76,7 +80,7 @@ Every write permission in this template is documented below. **ProductX has zero
 | Role | Total Permissions | Read-Only | Write | Write Justification |
 |---|---|---|---|---|
 | ProductXWAFRRole | 2 managed policies (`ReadOnlyAccess`, `SecurityAudit`) + 36 inline actions (ComplianceSignalAccess + WAFRWorkloadManagement) + ManageCURPolicy + `DataPlaneReadDeny` (24 explicit Deny) | All read except 11 WAFR workload management actions + 5 CUR/S3 provisioning actions; customer application-data reads explicitly denied (see `DataPlaneReadDeny`) | 11 Well-Architected Tool actions + 5 CUR/S3 write actions | WAFR workload management + CUR bucket creation for cost visibility |
-| CloudvizArchitectureDiagramRole | Custom inline policy (`CloudvizReadOnlyAccess`, 52 scoped read actions) | All | None | — |
+| CloudelligentDiscoveryRole (Cloudviz) | Custom inline policy (`CloudelligentDiscoveryReadOnlyAccess`, 52 scoped read actions) | All | None | — |
 | BillingReadOnlyRole | 47 inline actions | All | None | — |
 | ReservedAI-Write | 84 inline actions | 81 read | 3 write (`s3:CreateBucket`, `s3:PutBucketPolicy`, `cur:PutReportDefinition`) | CUR provisioning — create S3 bucket for cost data delivery and define the CUR export |
 
@@ -175,8 +179,8 @@ These allow ProductX to create a Cost & Usage Report and its delivery bucket for
 
 | Mode | Stack | Roles Created | Use Case |
 |---|---|---|---|
-| Single Account | Main stack only | ProductXWAFRRole, Cloudviz, Billing, ReservedAI | Client with one AWS account |
-| Organization | Main stack + StackSet (auto-deploys instances to `OrgUnitId`) | All above + ProductXWAFRMemberRole + CloudvizMemberRole in every account under the target OU | Client with AWS Organizations |
+| Single Account | Main stack only | `ProductXWAFRRole`, `CloudelligentDiscoveryRole` (Cloudviz), `BillingReadOnlyRole`, `ReservedAI-Write` (Archera) | Client with one AWS account |
+| Organization | Main stack + StackSet (auto-deploys instances to `OrgUnitId`) | All above + `ProductXWAFRMemberRole` + a member `CloudelligentDiscoveryRole` in every account under the target OU | Client with AWS Organizations |
 
 **Organization mode workflow:**
 1. SA obtains the target OU ID (`ou-xxxx-xxxxxxxx`) or org root ID (`r-xxxx`) from the AWS Organizations console.

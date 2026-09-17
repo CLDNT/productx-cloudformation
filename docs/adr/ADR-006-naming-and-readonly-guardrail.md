@@ -31,24 +31,36 @@ This ADR plans those changes. Two of the five are already satisfied or clarified
 The `OrgUnitId` parameter added in ADR-003 already accepts **either** a root ID (`r-xxxx`) **or** a child OU ID (`ou-xxxx-xxxxxxxx`). No further change required. Marked complete.
 
 ### Point 2 — Proper naming and descriptions
-Rewrite the template-level `Description`, all parameter descriptions, resource comments, and `Outputs` descriptions to be clear, consistent, and professional. Remove the "combines X + Y + Z for vendor" framing in favor of a single generic statement of purpose.
+The template-level `Description` was rewritten to a single generic statement ("Cloudelligent Discovery Role. Creates read-only cross-account IAM roles that let Cloudelligent perform automated cloud assessment, cost visibility, and reporting…"). **All comments were removed** from the template (it is shared with customers), and **parameter/output `Description` fields were removed** — explanatory content lives in the docs, not the customer-facing CF. (`ConstraintDescription` validation messages were retained as they are functional.)
 
 ### Point 3 — Role naming / third-party de-emphasis
-**Scope decision (confirmed with management):** the only **role-name change** is the Cloudviz role.
-- `cloudelligent-assessment-role` → **`CloudelligentDiscoveryRole`** (applies to BOTH the management-account role `CloudvizArchitectureDiagramRole` and the StackSet member role `CloudvizMemberRole`, which currently share that `RoleName`).
-- **All other role names are unchanged** — `ProductXWAFRRole`, `ProductXWAFRMemberRole`, `BillingReadOnlyRole`, and `ReservedAI-Write` keep their current `RoleName` values (renaming them carries integration risk and was explicitly scoped out).
+Two levels of naming were addressed:
 
-> **Rationale for not renaming the others:** third-party and internal backends may hardcode the role name/ARN. Management limited the rename to the Cloudviz role only.
+**Deployed `RoleName` values — only the Cloudviz role changed:**
+- `cloudelligent-assessment-role` → **`CloudelligentDiscoveryRole`** (both the management-account role and the StackSet member role, which share the name).
+- Its inline policy `CloudvizReadOnlyAccess` → **`CloudelligentDiscoveryReadOnlyAccess`**.
+- **All other deployed `RoleName` values are unchanged** — `ProductXWAFRRole`, `ProductXWAFRMemberRole`, `BillingReadOnlyRole`, `ReservedAI-Write` — because third-party/internal backends may hardcode them (see Accepted Breaking Change).
 
-### Point 4 — Generic, de-branded descriptions
-De-brand **all** descriptions and comments (this is safe — descriptions have no functional effect). Remove tool/vendor names (WAFR, CloudOps, Cloudviz, Archera, ReservedAI, "architecture diagrams," "spot data feeds," etc.) from customer-visible text. Replace with generic Cloudelligent / Product X read-only "discovery / assessment / cost-visibility" language. Where a third party must be referenced for the customer to understand a trust relationship, keep it to the **bare minimum** (e.g. the trust principal account ID stands on its own; no need to name the vendor or its product in prose).
+**Logical IDs (CloudFormation-internal identifiers) — fully de-branded** (existing stacks are out of scope, so this is safe/cosmetic):
+- `ProductXWAFRRole` → `CloudelligentWAFRRole`
+- `ProductXWAFRMemberRole` → `CloudelligentWAFRMemberRole`
+- `CloudvizArchitectureDiagramRole` → `CloudelligentDiscoveryRole`
+- `CloudvizMemberRole` → `CloudelligentDiscoveryMemberRole`
+- `BillingReadOnlyRole` → `CloudelligentBillingRole`
+- `ReservedAIRole` → `CloudelligentFinOpsRole`
+- Outputs: `CloudvizRoleARN` → `DiscoveryRoleArn`, `CloudvizMemberRoleArn` → `DiscoveryMemberRoleArn`
+
+> **Logical ID ≠ deployed RoleName.** Logical IDs are internal to the template and were de-branded freely. Deployed `RoleName` values are what appears in the customer's IAM and what third parties assume — only Cloudviz's changed.
+
+### Point 4 — Generic, de-branded descriptions (WAFR term retained)
+De-branded all customer-visible text of tool/vendor names (Cloudviz, Archera, ReservedAI, "architecture diagrams," "spot data feeds," ProductX prose). **The term "WAFR" is retained** — management confirmed WAFR is an acceptable, accurate descriptor (preferred over vague "assessment" wording). This supersedes the original point-4 wording that would have stripped WAFR; the intent is to de-emphasize *third-party* tooling, not the AWS Well-Architected Framework itself.
 
 ### Point 5 — Read-only guardrail (forward-looking, Option A)
 Adopt as a **governance principle**, not a removal:
 - The existing write permissions (`WAFRWorkloadManagement`, `ManageCURPolicy`, Archera's scoped writes) are **retained** — they are core/agreed functionality.
 - **No new write or elevated permissions** may be added to the template without explicit management + security review and a corresponding ADR.
 - The accepted data-plane-read `Deny` (ADR-005) stands and is the model for "least privilege by default."
-- This principle will be recorded as a comment/section in the template header and in the README so future editors don't silently add writes.
+- This principle is recorded in the **README** (not as a template comment — comments were removed from the customer-facing template per point 2).
 
 ## Accepted Breaking Change — Cloudviz Role Rename
 
@@ -58,7 +70,7 @@ Renaming the Cloudviz role **will break diagram generation for existing customer
 
 **Management decision:** this breakage for existing customers is **accepted**. Existing customers must re-onboard / update the stored Role ARN on the Cloudviz side (or their diagrams break until they do). New customers receive `CloudelligentDiscoveryRole` from the start and are unaffected.
 
-**Not changing:** trust principal account, static `ExternalId`, and the role's permissions (`CloudvizReadOnlyAccess`, 52 actions) all stay identical — only `RoleName` changes.
+**Not changing:** trust principal account, static `ExternalId`, and the role's permission *set* (the 52 read actions) all stay identical — only the `RoleName` and the inline policy's *name* (`CloudvizReadOnlyAccess` → `CloudelligentDiscoveryReadOnlyAccess`) change.
 
 ## Consequences
 
@@ -77,27 +89,19 @@ Renaming the Cloudviz role **will break diagram generation for existing customer
 - De-branding descriptions has zero functional impact.
 - Keeping the other role names avoids touching ProductX/finance/Archera integrations.
 
-## Implementation Plan (pending approval — NOT yet applied)
+## Implementation (applied 2026-09-17)
 
-1. **CFT — descriptions/naming (points 2 + 4):**
-   - Rewrite template `Description` to a generic Cloudelligent Product X read-only onboarding statement.
-   - De-brand parameter descriptions (`ExistingCURBucket`, `EnableOrganizations`, `OrgUnitId`, etc.) and all resource comments.
-   - De-brand `Outputs` descriptions.
-2. **CFT — Cloudviz rename (point 3, gated):**
-   - Change `RoleName` from `cloudelligent-assessment-role` to `CloudelligentDiscoveryRole` on both the management `CloudvizArchitectureDiagramRole` and the StackSet member `CloudvizMemberRole`.
-   - Leave trust policy, `ExternalId`, and permissions untouched.
-3. **CFT — read-only guardrail (point 5):**
-   - Add a header comment / section stating no new write or elevated permissions may be introduced without review, referencing this ADR.
-4. **Docs:**
-   - README: update role table names/descriptions and fully de-brand tool/vendor tool names throughout (per resolved Q1), retaining bare-minimum third-party references (account IDs) only where needed for accuracy.
-   - CUSTOMER_SECURITY_REFERENCE: update the Cloudviz role name and de-brand descriptions; this is the external-facing doc and must match the template's generic tone.
-   - CHANGELOG: add a `[2.4]` entry noting the de-branding, the Cloudviz rename + accepted existing-customer breakage, and the read-only guardrail.
-5. **Rollout / escalation:**
-   - Escalate to Cloudviz (and account management for affected customers) the coordinated cutover: rename in template + update stored Role ARN on Cloudviz per existing customer.
-   - Sequence existing-customer updates; communicate expected diagram-generation downtime.
-6. **Validation:**
-   - Template parses; both Cloudviz roles carry the new name; no dangling `cloudelligent-assessment-role` references remain.
-   - External-safety re-check: customer-facing template + CUSTOMER_SECURITY_REFERENCE contain no tool/vendor branding beyond the bare-minimum trust references.
+1. **CFT — descriptions/naming (points 2 + 4):** ✅ Done
+   - Rewrote template `Description` to a generic de-branded statement.
+   - Removed **all comments** from the template and removed parameter/output `Description` fields (kept `ConstraintDescription`).
+   - De-branded logical IDs and Output names to the `Cloudelligent*` scheme.
+2. **CFT — Cloudviz rename (point 3):** ✅ Done
+   - Changed `RoleName` `cloudelligent-assessment-role` → `CloudelligentDiscoveryRole` on both the management and member Cloudviz roles; renamed inline policy `CloudvizReadOnlyAccess` → `CloudelligentDiscoveryReadOnlyAccess`.
+   - Trust policy, `ExternalId`, and the 52-action permission set unchanged.
+3. **CFT — read-only guardrail (point 5):** ✅ Done — recorded in the README (not the template, since comments were removed).
+4. **Docs:** ✅ Done — README (role table, source-of-truth, write tracker, deployment modes), CUSTOMER_SECURITY_REFERENCE (role name, action count, de-branded prose), CHANGELOG (`[2.4]`), versions bumped to 2.4.
+5. **Rollout / escalation:** ⏳ Pending — coordinate with Cloudviz + account management the per-customer stored-ARN update for existing customers (breakage accepted). Owner TBD (open question 3).
+6. **Validation:** ✅ Done — template parses; both Cloudviz roles carry the new name; zero `cloudelligent-assessment-role` / `Cloudviz` references remain in the template; external-safety re-checked.
 
 ## Open Questions for Review
 

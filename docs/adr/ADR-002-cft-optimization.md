@@ -7,7 +7,7 @@ Reviewers: CEO, COO, Product Manager, Sales Lead, Solutions Architects
 
 ## Context
 
-The `Cloudelligent_WAFR_Onboarding.yaml` template currently deploys **9 resources** (4 IAM roles + 4 policies + 1 StackSet) into each customer's AWS account. Following the addition of `WAFRWorkloadManagement` and `ComputeOptimizerPolicy`, a review was conducted to identify further optimization opportunities.
+The `Cloudelligent_WAFR_Onboarding.yaml` template currently deploys **8 resources** (4 IAM roles + 3 policies + 1 StackSet) into each customer's AWS account. This review was conducted to identify optimization opportunities. (Note: since this ADR was first drafted, `ComputeOptimizerPolicy` was removed per ADR-004 and a `DataPlaneReadDeny` policy was added per ADR-005; the resource count reflects the current state.)
 
 Goals:
 - Minimize the number of IAM roles deployed in customer accounts (each role is a security review item)
@@ -24,7 +24,7 @@ Current state:
 | BillingReadOnlyRole | `BillingReadOnlyRole` | Internal finance (`898668804275`) | Invoice/billing analytics |
 | ReservedAIRole | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility + CUR creation (RI/SP purchasing is in Archera's separate full template) |
 
-Plus policies attached to `ProductXWAFRRole` (`ComplianceSignalAccess`, `WAFRWorkloadManagement`, `ComputeOptimizerPolicy`, `ManageCURPolicy`, and the conditional `AllowAssumeMemberRoles` + `ExistingCURBucketPolicy`) and the StackSet.
+Plus policies attached to `ProductXWAFRRole` (`ComplianceSignalAccess`, `WAFRWorkloadManagement`, `DataPlaneReadDeny`, `ManageCURPolicy`, and the conditional `AllowAssumeMemberRoles` + `ExistingCURBucketPolicy`) and the StackSet.
 
 ---
 
@@ -61,7 +61,7 @@ Every action in this policy is already granted by the `ReadOnlyAccess` managed p
 
 **Recommendation: KEEP (not actionable)**
 
-This role creates `cloudelligent-assessment-role` with a **custom scoped read-only policy** (`CloudvizReadOnlyAccess`, ~50 targeted Describe/List/Get actions — see `docs/knowledge/cloudviz_custom_readonly_policy.json`), trusted by Cloudviz's AWS account (`282762468439`). It exists solely to let Cloudviz generate architecture diagrams.
+This role creates `cloudelligent-assessment-role` with a **custom scoped read-only policy** (`CloudvizReadOnlyAccess`, 52 targeted Describe/List/Get actions — see `docs/knowledge/cloudviz_custom_readonly_policy.json`), trusted by Cloudviz's AWS account (`282762468439`). It exists solely to let Cloudviz generate architecture diagrams.
 
 **Decision:** Cloudviz remains a required tool. ProductX does not currently support architecture diagram generation, so this role cannot be removed. The role stays in the template.
 
@@ -128,7 +128,7 @@ No change. The role stays separate with its own narrow permissions. Costs nothin
 
 ## Outcome After Actionable Proposals (if 1 + 4 accepted)
 
-**Before (current):** 4 roles + 4 policies + 1 StackSet = 9 resources.
+**Before (current):** 4 roles + 3 policies + 1 StackSet = 8 resources.
 
 **After:**
 - Remove redundant `ComplianceSignalAccess` inline policy (template simplification, no functional change)

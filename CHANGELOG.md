@@ -18,6 +18,99 @@ Each entry documents a change to the CloudFormation template deployed into custo
 
 ---
 
+## [2.3] — 2026-09-17
+
+### Added: Automatic StackSet Deployment to a Chosen OU (ADR-003)
+
+**What changed:**  
+The organization StackSet now **auto-deploys** member-account roles. Added an `OrgUnitId` parameter and a `StackInstancesGroup` on `CloudelligentOnboardingMemberStackSet`. When `EnableOrganizations=yes`, the SA supplies one OU ID (a child OU `ou-xxxx-xxxxxxxx` or the org root `r-xxxx`) and the roles deploy to every account under it automatically, in the stack's region. Previously the StackSet was a shell that required an SA to add stack instances manually.
+
+**Why:**  
+The manual "add stack instances" step added onboarding friction and was error-prone (wrong OU, wrong region). Auto-deployment makes org onboarding a single stack deployment. Accounts that later join the target OU are still covered automatically via the existing `AutoDeployment: Enabled` setting.
+
+**Customer impact:**
+- New org customers: roles deploy to the chosen OU in one step; no manual StackSet work.
+- Existing org customers: on the next stack update they must supply `OrgUnitId`. If they previously added instances manually to the same OU, CloudFormation reconciles to the declared target.
+- Scope is controlled by which OU ID is supplied — a narrow child OU limits coverage; the root covers the whole org.
+
+**Sales talking point:**  
+> "For AWS Organizations, onboarding is a single deployment — you tell us which OU to cover and the roles roll out to every account in it automatically, including accounts you add later."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | During org onboarding, obtain the target OU (or root) ID from the customer's AWS Organizations console and pass it as `OrgUnitId`. To remove, delete the main stack (clean up any failed instances first). |
+| Product Manager | Note: one OU per deployment. Multi-OU customers need a stack update or a separately managed instance. |
+| Sales | Position org onboarding as single-step, auto-scaling to new accounts. |
+
+**Reference:** [ADR-003](docs/adr/ADR-003-stackset-auto-deployment.md).
+
+---
+
+## [2.2] — 2026-09-17
+
+### Removed: ComputeOptimizerPolicy — Compute Optimizer Is Not Used (ADR-004)
+
+**What changed:**  
+Removed the `ComputeOptimizerPolicy` from `ProductXWAFRRole` (management account) and the `ComputeOptimizerAccess` inline policy from `ProductXWAFRMemberRole` (member accounts via StackSet). These granted 17 read-only `compute-optimizer:Get*`/`Describe*` actions. Template resource count drops from 9 to 8.
+
+**Why:**  
+An earlier draft added these permissions on the assumption that AWS Compute Optimizer would act as a fallback/supplement to the ProductX Cost Optimization Engine. The authoritative engine design (`docs/knowledge/design.md`, locked decision #2) confirms this is **not** the case: "Product X always runs its own methodology... there is no external recommendation source and no fallback routing." Compute Optimizer is not a component, dependency, or data source — the permissions were never exercised. Removing them tightens least privilege and eliminates a documentation contradiction that a security reviewer would catch.
+
+**Customer impact:**
+- New customers: smaller permission footprint to review; no Compute Optimizer permissions requested.
+- Existing customers: the policy is removed on the next stack update. **No functional impact** — nothing ever called these APIs.
+
+**Sales talking point:**  
+> "ProductX runs its own proprietary optimization engine and requests only the permissions it actually uses. It does not rely on — or request access to — AWS Compute Optimizer."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | Existing clients get the policy removed on their next stack update. No pre-work needed. |
+| Product Manager | Confirmed: the ProductX UI does not surface Compute Optimizer data; no roadmap dependency in the next 6–12 months. |
+| Sales | Drop any "we also surface Compute Optimizer recommendations" positioning — it was never accurate. |
+
+**Reference:** [ADR-004](docs/adr/ADR-004-remove-compute-optimizer.md).
+
+> **Note:** A prior changelog entry described `ComputeOptimizerPolicy` as a "fallback/supplement." That framing was based on an assumption later corrected by the engine design document and is superseded by this removal. Compute Optimizer was never consumed by ProductX.
+
+---
+
+### Clarified: Cost Optimization Engine vs. Compute Optimizer (documentation)
+
+**What changed:**  
+Updated README source-of-truth table and business use case mapping to reference the ProductX Cost Optimization Engine design document (`docs/knowledge/design.md`) as the authoritative source for FinOps permission requirements. Clarified the relationship between the proprietary engine and AWS Compute Optimizer.
+
+**Why:**  
+The engine collects CloudWatch metrics directly and runs its own proprietary methodology. It does not call AWS Compute Optimizer APIs, read its recommendations, or check enrollment. Compute Optimizer is **not a dependency, fallback, or supplement** — it is not consumed anywhere in ProductX. This distinction matters for security reviews and accurate positioning. (The dedicated `ComputeOptimizerPolicy` was subsequently removed — see the removal entry above and [ADR-004](docs/adr/ADR-004-remove-compute-optimizer.md).)
+
+The engine's actual dependencies (all read-only, all already covered by `ReadOnlyAccess` + `ManageCURPolicy`/`ExistingCURBucketPolicy`):
+- CloudWatch: `GetMetricData`, `GetMetricStatistics`, `ListMetrics`
+- Resource inventory: `Describe*`/`Get*`/`List*` across EC2, ASG, ECS, Lambda, RDS, ElastiCache, DynamoDB, DocumentDB, MemoryDB, WorkSpaces, SageMaker
+- Cost Explorer: `ce:GetReservationPurchaseRecommendation`, `ce:GetReservationUtilization`, `ce:DescribeNotificationSubscription`
+- Cost Optimization Hub: `cost-optimization-hub:Get*`, `cost-optimization-hub:List*` (AfterDiscounts pricing mode)
+- CUR via S3: `s3:GetObject` (Billed Cost source)
+- Budgets: `budgets:ViewBudget`, `budgets:Describe*`
+- Support: `support:DescribeTrustedAdvisorCheckResult`, `support:DescribeServices`, `support:DescribeSupportLevel`
+
+**Customer impact:** None — documentation only.
+
+**Sales talking point:**  
+> "ProductX runs its own proprietary cost optimization engine — it doesn't rely on AWS Compute Optimizer. It collects metrics directly from CloudWatch and applies a deeper methodology. It does not request or use Compute Optimizer permissions."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| Sales | Position the engine as proprietary and self-contained; do not claim Compute Optimizer integration |
+| Product Manager | Reference `docs/knowledge/design.md` as the canonical source for engine capabilities and coverage |
+| SAs | When customers ask "do we need to enable Compute Optimizer?" — no, ProductX works independently and does not use it |
+
+---
+
 ## [2.1] — 2026-09-03
 
 ### Added: Explicit Deny on Customer Application-Data Reads (`DataPlaneReadDeny`, ADR-005)
@@ -57,7 +150,7 @@ A HIPAA-covered prospect objected that `ReadOnlyAccess` grants `s3:GetObject` (p
 ### Changed: Cloudviz Role Now Uses a Custom Scoped Policy (was ReadOnlyAccess)
 
 **What changed:**  
-Both Cloudviz roles — `CloudvizArchitectureDiagramRole` (management account) and `CloudvizMemberRole` (member accounts via StackSet) — now use a custom inline policy (`CloudvizReadOnlyAccess`, ~50 targeted Describe/List/Get actions) instead of the broad AWS `ReadOnlyAccess` managed policy. Source: `docs/knowledge/cloudviz_custom_readonly_policy.json`.
+Both Cloudviz roles — `CloudvizArchitectureDiagramRole` (management account) and `CloudvizMemberRole` (member accounts via StackSet) — now use a custom inline policy (`CloudvizReadOnlyAccess`, 52 targeted Describe/List/Get actions) instead of the broad AWS `ReadOnlyAccess` managed policy. Source: `docs/knowledge/cloudviz_custom_readonly_policy.json`.
 
 **Why:**  
 Cloudviz only needs to enumerate resource types and their configuration to draw architecture diagrams (EC2, RDS, Lambda, ECS, EKS, ELB, S3 metadata, etc.). It does not need the full read surface of `ReadOnlyAccess`, and in particular does not need data-plane reads. Scoping to the minimum required actions tightens least privilege and reduces the permission footprint customers must review.
@@ -76,62 +169,6 @@ Cloudviz only needs to enumerate resource types and their configuration to draw 
 | SAs | Existing clients need a stack update to apply the scoped Cloudviz policy |
 | Product Manager | Confirm Cloudviz diagram generation works with the scoped action list; add actions if any resource type fails to render |
 | Sales | Update security responses — Cloudviz uses a custom minimal policy, not `ReadOnlyAccess` |
-
----
-
-### Added: ComputeOptimizerPolicy (Compute Optimizer fallback)
-
-**What changed:**  
-Added a dedicated `ComputeOptimizerPolicy` to `ProductXWAFRRole` (management account) and `ComputeOptimizerAccess` to `ProductXWAFRMemberRole` (member accounts via StackSet). Grants read-only `compute-optimizer:Get*`/`Describe*` actions.
-
-**Why:**  
-AWS Compute Optimizer serves as a **fallback/supplement** to the ProductX Cost Optimization Engine. The engine does not depend on Compute Optimizer — it computes its own recommendations from CloudWatch metrics — but native AWS recommendations are surfaced alongside the engine's findings when available. This gives customers a second data point and covers any resource types the engine hasn't yet modeled.
-
-**Customer impact:**
-- New customers: Compute Optimizer recommendations appear alongside ProductX findings (read-only, no enrollment required by ProductX)
-- Existing customers: Need stack update to gain the fallback recommendations
-
-**Sales talking point:**  
-> "ProductX runs its own proprietary optimization engine AND surfaces AWS Compute Optimizer's native recommendations as a cross-check — you get both, all read-only."
-
-**Action required:**
-
-| Who | Action |
-|-----|--------|
-| SAs | Existing clients need a stack update to receive Compute Optimizer fallback recommendations |
-| Product Manager | Confirm the ProductX UI surfaces Compute Optimizer data as a supplement, not a primary source |
-
----
-
-### Clarified: Cost Optimization Engine vs. Compute Optimizer (documentation)
-
-**What changed:**  
-Updated README source-of-truth table and business use case mapping to reference the ProductX Cost Optimization Engine design document (`docs/knowledge/design.md`) as the authoritative source for FinOps permission requirements. Clarified the relationship between the proprietary engine and AWS Compute Optimizer.
-
-**Why:**  
-The engine collects CloudWatch metrics directly and runs its own proprietary methodology. It does not call AWS Compute Optimizer APIs, read its recommendations, or check enrollment as part of its core analysis. Compute Optimizer is a **fallback/supplement** (see the `ComputeOptimizerPolicy` entry above), not a dependency — this distinction matters for security reviews and accurate positioning.
-
-The engine's actual dependencies (all read-only, all already covered by `ReadOnlyAccess` + `ManageCURPolicy`/`ExistingCURBucketPolicy`):
-- CloudWatch: `GetMetricData`, `GetMetricStatistics`, `ListMetrics`
-- Resource inventory: `Describe*`/`Get*`/`List*` across EC2, ASG, ECS, Lambda, RDS, ElastiCache, DynamoDB, DocumentDB, MemoryDB, WorkSpaces, SageMaker
-- Cost Explorer: `ce:GetReservationPurchaseRecommendation`, `ce:GetReservationUtilization`, `ce:DescribeNotificationSubscription`
-- Cost Optimization Hub: `cost-optimization-hub:Get*`, `cost-optimization-hub:List*` (AfterDiscounts pricing mode)
-- CUR via S3: `s3:GetObject` (Billed Cost source)
-- Budgets: `budgets:ViewBudget`, `budgets:Describe*`
-- Support: `support:DescribeTrustedAdvisorCheckResult`, `support:DescribeServices`, `support:DescribeSupportLevel`
-
-**Customer impact:** None — documentation only.
-
-**Sales talking point:**  
-> "ProductX runs its own proprietary cost optimization engine — it doesn't rely on AWS Compute Optimizer for its analysis. It collects metrics directly from CloudWatch and applies a deeper methodology, then cross-checks against Compute Optimizer's native recommendations as a supplement."
-
-**Action required:**
-
-| Who | Action |
-|-----|--------|
-| Sales | Position the engine as proprietary + Compute Optimizer as a supplementary cross-check |
-| Product Manager | Reference `docs/knowledge/design.md` as the canonical source for engine capabilities and coverage |
-| SAs | When customers ask "do we need to enable Compute Optimizer?" — no, ProductX works independently but will surface its recommendations if present |
 
 ---
 
@@ -236,8 +273,10 @@ Single stack replaces the old CoreStack template (`Corestack_FinOps_read_access.
 - Per-client External ID (confused-deputy protection) replaces the old shared hardcoded ID
 - Org rollout uses a service-managed StackSet shell (SA manually adds stack instances to target OUs/accounts)
 
+> **Superseded by [2.3]:** As of v2.3 the StackSet auto-deploys to a chosen OU via the `OrgUnitId` parameter — the manual "add stack instances" step described here no longer applies. See the [2.3] entry.
+
 **Sales talking point:**  
-> "One CloudFormation stack covers your entire AWS Organization. Deploy once in the management account, add member accounts to the StackSet, and every account is connected — no per-account role setup."
+> "One CloudFormation stack covers your entire AWS Organization. Deploy once in the management account, add member accounts to the StackSet, and every account is connected — no per-account role setup." _(Note: as of v2.3, member accounts are covered automatically via the `OrgUnitId` you provide — no manual StackSet step.)_
 
 **Action required:**
 

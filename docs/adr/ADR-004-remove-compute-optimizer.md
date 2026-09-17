@@ -1,7 +1,8 @@
 # ADR-004: Remove ComputeOptimizerPolicy — Compute Optimizer Is Not Used
 
-Status: Proposed  
+Status: Accepted  
 Date: 2026-09-01  
+Accepted: 2026-09-17  
 Author: Haider Zaidi  
 Reviewers: CEO, COO, Product Manager, Solutions Architects
 
@@ -60,26 +61,21 @@ No compensating permissions are required — nothing consumes Compute Optimizer 
 
 ## Implementation
 
-1. Remove the `ComputeOptimizerPolicy` resource from `Cloudelligent_WAFR_Onboarding.yaml` (management account)
-2. Remove the `ComputeOptimizerAccess` inline policy from the `ProductXWAFRMemberRole` in the StackSet `TemplateBody`
-3. Update `README.md`:
-   - Remove the `ComputeOptimizerPolicy` row from Template Components (renumber to 8 resources)
-   - Remove the Compute Optimizer entry from Source of Truth
-   - Remove the "Optimize Usage — Compute Optimizer fallback" row from the Business Use Case mapping
-   - Update the "Note on AWS Compute Optimizer" to state it is not used at all
-   - Update the Write Permission Tracker summary (remove ComputeOptimizerPolicy reference)
-4. Update `CHANGELOG.md` — supersede the "Added: ComputeOptimizerPolicy (Compute Optimizer fallback)" entry with a removal entry referencing this ADR
-5. Update `CUSTOMER_SECURITY_REFERENCE.md` — remove the ComputeOptimizerPolicy line from conditional resources
-6. Validate the template and confirm 8 resources
+1. ✅ **Done** — Removed the `ComputeOptimizerPolicy` resource from `Cloudelligent_WAFR_Onboarding.yaml` (management account).
+2. ✅ **Done** — Removed the `ComputeOptimizerAccess` inline policy from `ProductXWAFRMemberRole` in the StackSet `TemplateBody`.
+3. ✅ **Done** — Updated `README.md`: removed the `ComputeOptimizerPolicy` component row (now 8 resources), the Source-of-Truth entry, the "Optimize Usage — Compute Optimizer fallback" mapping row, the "Note on AWS Compute Optimizer", and the Write Permission Tracker reference.
+4. ✅ **Done** — Updated `CHANGELOG.md`: superseded the "Added: ComputeOptimizerPolicy" entry with a removal entry referencing this ADR.
+5. ✅ **Done** — Updated `CUSTOMER_SECURITY_REFERENCE.md`: removed the `ComputeOptimizerPolicy` line from conditional resources.
+6. ✅ **Done** — Validated the template: 8 resources, zero `compute-optimizer` references.
 
 ## Verification
 
-- Template validates as well-formed CloudFormation
-- `grep` confirms zero `compute-optimizer` references remain in the CFT
-- All docs cross-checked so no reference to Compute Optimizer as a dependency/fallback survives
-- Engine design doc (`docs/knowledge/design.md`) already reflects the correct state — no change needed there
+- Template validates as well-formed CloudFormation (8 top-level resources).
+- `grep` confirms zero `compute-optimizer` references remain in the CFT.
+- All docs cross-checked so no reference to Compute Optimizer as a dependency/fallback survives.
+- Engine design doc (`docs/knowledge/design.md`) already reflects the correct state — no change needed there.
 
 ## Questions for Review
 
-1. Confirm there is no roadmap item that would require Compute Optimizer recommendations in the next 6–12 months.
-2. Confirm the ProductX platform UI does not surface Compute Optimizer data today (if it does, this ADR's premise is wrong and we revert to Interpretation A).
+1. **Resolved on acceptance** — No roadmap item in the next 6–12 months requires Compute Optimizer recommendations; the proprietary engine remains the sole recommendation source (design.md locked decision #2).
+2. **Resolved on acceptance** — Confirmed the ProductX platform UI does not surface Compute Optimizer data today. The removal premise holds.

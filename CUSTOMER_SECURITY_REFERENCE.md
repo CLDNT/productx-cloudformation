@@ -1,8 +1,8 @@
 # Cloudelligent Onboarding Stack — Customer Security Reference
 
 **Template:** `Cloudelligent_WAFR_Onboarding.yaml`  
-**Version:** 2.0  
-**Date:** August 2026
+**Version:** 2.3  
+**Date:** September 2026
 
 ---
 
@@ -16,7 +16,7 @@ This CloudFormation template deploys IAM roles into your AWS Management Account 
 4. **Compliance Scanning** — CIS Benchmark assessments, security posture evaluation
 5. **Architecture Diagrams** — automated infrastructure visualization
 
-For AWS Organizations, a StackSet extends coverage to member accounts.
+For AWS Organizations, a StackSet automatically deploys the roles to the accounts in the organizational unit (or root) you specify during deployment.
 
 ---
 
@@ -30,11 +30,10 @@ For AWS Organizations, a StackSet extends coverage to member accounts.
 | 4 | `ReservedAI-Write` | Cost data export provisioning (for RI/SP analysis tooling) | Read + limited write (scoped) |
 
 Additional conditional resources:
-- **ComputeOptimizerPolicy** — policy granting read-only access to AWS Compute Optimizer recommendations (supplements Cloudelligent's own optimization analysis)
 - **AllowAssumeMemberRoles** — policy enabling the ProductX role to assume matching roles in member accounts (org mode only)
 - **ManageCURPolicy** — policy enabling ProductX to create a Cost & Usage Report and delivery bucket
 - **ExistingCURBucketPolicy** — policy enabling ProductX to read an existing CUR bucket (if provided)
-- **StackSet** — deploys `ProductXWAFRRole` and `cloudelligent-assessment-role` to member accounts (org mode only)
+- **StackSet** — automatically deploys `ProductXWAFRRole` and `cloudelligent-assessment-role` to the accounts under the specified OU (org mode only)
 
 ---
 
@@ -45,6 +44,7 @@ Additional conditional resources:
 | `TrustedAccountId` | No | Pre-filled | Cloudelligent's platform account. Do not change. |
 | `ExternalId` | Yes | _(provided by Cloudelligent)_ | Unique per-customer identifier for confused-deputy protection. |
 | `EnableOrganizations` | No | `no` | Set `yes` if deploying across an AWS Organization. |
+| `OrgUnitId` | Only if `EnableOrganizations=yes` | _(empty)_ | The AWS Organizations root (`r-xxxx`) or organizational unit (`ou-xxxx-xxxxxxxx`) whose accounts should receive the roles. Roles deploy to all current accounts in that OU and to any that join it later. |
 | `ExistingCURBucket` | No | _(empty)_ | Optional. Name of an existing CUR S3 bucket to read. Leave empty to let ProductX create one automatically, or connect later. |
 
 ---
@@ -152,9 +152,9 @@ ProductX reads only **resource configuration and metadata** (how resources are s
 | Mode | What Happens | Use Case |
 |---|---|---|
 | **Single Account** | Deploys roles in your management account only | One AWS account |
-| **Organization** | Deploys roles in management account + creates a StackSet for member accounts | Multiple AWS accounts under AWS Organizations |
+| **Organization** | Deploys roles in your management account and automatically to every account under the OU you specify (`OrgUnitId`) | Multiple AWS accounts under AWS Organizations |
 
-For Organization mode, CloudFormation StackSets trusted access must be enabled in your AWS Organizations settings (one-time setup).
+For Organization mode, CloudFormation StackSets trusted access must be enabled in your AWS Organizations settings (one-time setup). You provide the target OU (or root) ID; roles deploy to all current accounts in it and to any that join later.
 
 ---
 
@@ -163,7 +163,7 @@ For Organization mode, CloudFormation StackSets trusted access must be enabled i
 To fully remove Cloudelligent access:
 
 1. **Single account:** Delete the CloudFormation stack → all roles are removed immediately
-2. **Organization:** Delete all StackSet instances first, then delete the main stack
+2. **Organization:** Delete the main stack → the StackSet removes the member-account roles automatically. If any stack instance is in a failed state, clean it up first so the deletion can complete.
 
 After deletion, Cloudelligent has zero access to your AWS environment.
 

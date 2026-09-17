@@ -1,53 +1,40 @@
- # =============================================================
-  # Version: v1.0.0
-  # Dated: 2026-09-09
-  # =============================================================
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  Cloudelligent WAFR Onboarding stack. Combines ProductX WAFR cross-account
-  role with Cloudelligent assessment role (for Cloudviz), Billing read-only role,
-  and ReservedAI role (for Archera). Set EnableOrganizations=yes to deploy all roles
-  to member accounts via a service-managed StackSet.
+  Cloudelligent Discovery Role. Creates read-only cross-account IAM roles
+  that let Cloudelligent perform automated cloud assessment, cost visibility,
+  and reporting in the customer's AWS account.
 
 Parameters:
   TrustedAccountId:
     Type: String
     Default: '820440428496'
-    Description: ProductX platform AWS account ID permitted to assume this role.
   ExternalId:
     Type: String
     NoEcho: true
-    Description: Per-account External ID issued by ProductX (confused-deputy protection). Do not change.
   EnableOrganizations:
     Type: String
     Default: 'no'
     AllowedValues: ['yes', 'no']
-    Description: >-
-      Set to 'yes' if this account is an AWS Organizations management account
-      and you want ProductX to scan member accounts too. Requires CloudFormation
-      StackSets trusted access to be activated in AWS Organizations first.
-      Leave 'no' for single-account onboarding.
+  OrgUnitId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^(r-[0-9a-z]{4,32}|ou-[0-9a-z]{4,32}-[0-9a-z]{8,32})$'
+    ConstraintDescription: >-
+      Must be a valid AWS Organizations root ID (r-xxxx) or organizational unit
+      ID (ou-xxxx-xxxxxxxx).
   ExistingCURBucket:
     Type: String
     Default: ''
     AllowedPattern: '^$|^[a-z0-9.\-]{3,63}$'
     ConstraintDescription: >-
       Single S3 bucket name (DNS-compliant, 3-63 chars).
-    Description: >-
-      Name of the S3 bucket holding the CUR that ProductX should read.
-      ProductX is read-only — it never creates buckets or CUR exports.
-      Leave empty only if cost visibility is not needed yet (CUR can be
-      connected later via the ProductX Cost Explorer UI).
 
 Conditions:
   IsOrg: !Equals [!Ref EnableOrganizations, 'yes']
   HasExistingCURBucket: !Not [!Equals [!Ref ExistingCURBucket, '']]
 
 Resources:
-  # =============================================================
-  # ProductX WAFR Role
-  # =============================================================
-  ProductXWAFRRole:
+  CloudelligentWAFRRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: ProductXWAFRRole
@@ -145,12 +132,6 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:wellarchitected:*:${AWS::AccountId}:workload/*'
         - PolicyName: DataPlaneReadDeny
-          # ProductX reads resource configuration/metadata, CloudWatch metrics,
-          # Cost Explorer, and Cost & Usage Report (CUR) objects only. It never
-          # reads customer application data. These explicit Denies override the
-          # AWS ReadOnlyAccess managed policy to guarantee no object/item/message
-          # content can be read outside the CUR bucket. Content-read actions
-          # ONLY — never Describe/List/configuration Get actions.
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -191,69 +172,29 @@ Resources:
                   - 'arn:aws:s3:::reserved-ai-spot-*/*'
                   - !If [HasExistingCURBucket, !Sub 'arn:aws:s3:::${ExistingCURBucket}/*', !Ref 'AWS::NoValue']
 
-
-  # =============================================================
-  # Compute Optimizer Policy (ProductX)
-  # =============================================================
-  ComputeOptimizerPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: ProductXComputeOptimizer
-      Roles:
-        - !Ref ProductXWAFRRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - compute-optimizer:DescribeRecommendationExportJobs
-              - compute-optimizer:GetAutoScalingGroupRecommendations
-              - compute-optimizer:GetEBSVolumeRecommendations
-              - compute-optimizer:GetEC2InstanceRecommendations
-              - compute-optimizer:GetEC2RecommendationProjectedMetrics
-              - compute-optimizer:GetECSServiceRecommendationProjectedMetrics
-              - compute-optimizer:GetECSServiceRecommendations
-              - compute-optimizer:GetEffectiveRecommendationPreferences
-              - compute-optimizer:GetEnrollmentStatus
-              - compute-optimizer:GetEnrollmentStatusesForOrganization
-              - compute-optimizer:GetIdleRecommendations
-              - compute-optimizer:GetLambdaFunctionRecommendations
-              - compute-optimizer:GetLicenseRecommendations
-              - compute-optimizer:GetRDSDatabaseRecommendationProjectedMetrics
-              - compute-optimizer:GetRDSDatabaseRecommendations
-              - compute-optimizer:GetRecommendationPreferences
-              - compute-optimizer:GetRecommendationSummaries
-            Resource: '*'
-
-  # =============================================================
-  # Allow Assume Member Account Roles (org mode only)
-  # =============================================================
   AllowAssumeMemberRoles:
     Type: AWS::IAM::Policy
     Condition: IsOrg
     Properties:
       PolicyName: ProductXWAFRAssumeMemberRoles
       Roles:
-        - !Ref ProductXWAFRRole
+        - !Ref CloudelligentWAFRRole
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Action: sts:AssumeRole
-            Resource: 'arn:aws:iam::*:role/ProductXWAFRMemberRole'
+            Resource: 'arn:aws:iam::*:role/CloudelligentWAFRMemberRole'
             Condition:
               StringEquals:
                 sts:ExternalId: !Ref ExternalId
 
-  # =============================================================
-  # CUR Management Policy (ProductX)
-  # =============================================================
   ManageCURPolicy:
     Type: AWS::IAM::Policy
     Properties:
       PolicyName: ProductXManageCUR
       Roles:
-        - !Ref ProductXWAFRRole
+        - !Ref CloudelligentWAFRRole
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -288,16 +229,13 @@ Resources:
               - !Sub 'arn:aws:s3:::productx-cur-${AWS::AccountId}'
               - !Sub 'arn:aws:s3:::productx-cur-${AWS::AccountId}/*'
 
-  # =============================================================
-  # CUR Read Policy (bring-your-own-CUR)
-  # =============================================================
   ExistingCURBucketPolicy:
     Type: AWS::IAM::Policy
     Condition: HasExistingCURBucket
     Properties:
       PolicyName: ProductXReadExistingCURBucket
       Roles:
-        - !Ref ProductXWAFRRole
+        - !Ref CloudelligentWAFRRole
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -310,14 +248,10 @@ Resources:
               - !Sub 'arn:aws:s3:::${ExistingCURBucket}'
               - !Sub 'arn:aws:s3:::${ExistingCURBucket}/*'
 
-
-  # =============================================================
-  # Cloudviz Architecture Diagram Role
-  # =============================================================
-  CloudvizArchitectureDiagramRole:
+  CloudelligentDiscoveryRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "cloudelligent-assessment-role"
+      RoleName: "CloudelligentDiscoveryRole"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -329,7 +263,7 @@ Resources:
               StringEquals:
                 sts:ExternalId: "9ba55e7ffef3c1611a511bbbdadbcdbff662b8d9"
       Policies:
-        - PolicyName: CloudvizReadOnlyAccess
+        - PolicyName: CloudelligentDiscoveryReadOnlyAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -389,11 +323,7 @@ Resources:
                   - appsync:ListDataSources
                 Resource: '*'
 
-
-  # =============================================================
-  # Billing ReadOnly Role
-  # =============================================================
-  BillingReadOnlyRole:
+  CloudelligentBillingRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: BillingReadOnlyRole
@@ -460,11 +390,7 @@ Resources:
                   - 'support:DescribeIssueTypes'
                 Resource: '*'
 
-
-  # =============================================================
-  # ReservedAI Role (Archera)
-  # =============================================================
-  ReservedAIRole:
+  CloudelligentFinOpsRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: ReservedAI-Write
@@ -590,16 +516,12 @@ Resources:
                 Resource:
                   - arn:aws:cur:*:*:definition/reserved-ai-*
 
-
-  # =================================================================
-  # StackSet — deploys all member roles across the org
-  # =================================================================
   CloudelligentOnboardingMemberStackSet:
     Type: AWS::CloudFormation::StackSet
     Condition: IsOrg
     Properties:
       StackSetName: CloudelligentOnboardingMemberStackSet
-      Description: Deploys ProductX WAFR and Cloudviz roles to organization member accounts.
+      Description: Deploys Cloudelligent read-only roles to organization member accounts.
       PermissionModel: SERVICE_MANAGED
       AutoDeployment:
         Enabled: true
@@ -617,6 +539,12 @@ Resources:
           ParameterValue: !Ref 'AWS::AccountId'
         - ParameterKey: ExternalId
           ParameterValue: !Ref ExternalId
+      StackInstancesGroup:
+        - DeploymentTargets:
+            OrganizationalUnitIds:
+              - !Ref OrgUnitId
+          Regions:
+            - !Ref 'AWS::Region'
       TemplateBody: |
         AWSTemplateFormatVersion: '2010-09-09'
         Description: Cloudelligent onboarding roles for member accounts (StackSet-deployed).
@@ -629,7 +557,7 @@ Resources:
             NoEcho: true
 
         Resources:
-          ProductXWAFRMemberRole:
+          CloudelligentWAFRMemberRole:
             Type: AWS::IAM::Role
             Properties:
               RoleName: ProductXWAFRMemberRole
@@ -638,7 +566,7 @@ Resources:
                 Statement:
                   - Effect: Allow
                     Principal:
-                      AWS: !Sub 'arn:aws:iam::${ManagementAccountId}:role/ProductXWAFRRole'
+                      AWS: !Sub 'arn:aws:iam::${ManagementAccountId}:role/CloudelligentWAFRRole'
                     Action: sts:AssumeRole
                     Condition:
                       StringEquals:
@@ -661,29 +589,6 @@ Resources:
                           - securityhub:DescribeHub
                           - access-analyzer:ListAnalyzers
                           - access-analyzer:ListFindings
-                        Resource: '*'
-                - PolicyName: ComputeOptimizerAccess
-                  PolicyDocument:
-                    Version: '2012-10-17'
-                    Statement:
-                      - Effect: Allow
-                        Action:
-                          - compute-optimizer:DescribeRecommendationExportJobs
-                          - compute-optimizer:GetAutoScalingGroupRecommendations
-                          - compute-optimizer:GetEBSVolumeRecommendations
-                          - compute-optimizer:GetEC2InstanceRecommendations
-                          - compute-optimizer:GetEC2RecommendationProjectedMetrics
-                          - compute-optimizer:GetECSServiceRecommendationProjectedMetrics
-                          - compute-optimizer:GetECSServiceRecommendations
-                          - compute-optimizer:GetEffectiveRecommendationPreferences
-                          - compute-optimizer:GetEnrollmentStatus
-                          - compute-optimizer:GetIdleRecommendations
-                          - compute-optimizer:GetLambdaFunctionRecommendations
-                          - compute-optimizer:GetLicenseRecommendations
-                          - compute-optimizer:GetRDSDatabaseRecommendationProjectedMetrics
-                          - compute-optimizer:GetRDSDatabaseRecommendations
-                          - compute-optimizer:GetRecommendationPreferences
-                          - compute-optimizer:GetRecommendationSummaries
                         Resource: '*'
                 - PolicyName: WAFRWorkloadManagement
                   PolicyDocument:
@@ -746,10 +651,6 @@ Resources:
                           - wellarchitected:ListTagsForResource
                         Resource: '*'
                 - PolicyName: DataPlaneReadDeny
-                  # Explicit Denies override the AWS ReadOnlyAccess managed policy
-                  # so the member role cannot read customer application data. Member
-                  # accounts read CUR data only via prefix-scoped buckets. Content-read
-                  # actions ONLY — never Describe/List/configuration Get actions.
                   PolicyDocument:
                     Version: '2012-10-17'
                     Statement:
@@ -789,10 +690,10 @@ Resources:
                           - 'arn:aws:s3:::reserved-ai-cur-*/*'
                           - 'arn:aws:s3:::reserved-ai-spot-*/*'
 
-          CloudvizMemberRole:
+          CloudelligentDiscoveryMemberRole:
             Type: AWS::IAM::Role
             Properties:
-              RoleName: cloudelligent-assessment-role
+              RoleName: CloudelligentDiscoveryRole
               AssumeRolePolicyDocument:
                 Version: '2012-10-17'
                 Statement:
@@ -804,7 +705,7 @@ Resources:
                       StringEquals:
                         sts:ExternalId: '9ba55e7ffef3c1611a511bbbdadbcdbff662b8d9'
               Policies:
-                - PolicyName: CloudvizReadOnlyAccess
+                - PolicyName: CloudelligentDiscoveryReadOnlyAccess
                   PolicyDocument:
                     Version: '2012-10-17'
                     Statement:
@@ -866,15 +767,12 @@ Resources:
 
         Outputs:
           WAFRMemberRoleArn:
-            Value: !GetAtt ProductXWAFRMemberRole.Arn
-          CloudvizMemberRoleArn:
-            Value: !GetAtt CloudvizMemberRole.Arn
-
+            Value: !GetAtt CloudelligentWAFRMemberRole.Arn
+          DiscoveryMemberRoleArn:
+            Value: !GetAtt CloudelligentDiscoveryMemberRole.Arn
 
 Outputs:
   WAFRRoleArn:
-    Description: ARN of the ProductX WAFR IAM Role.
-    Value: !GetAtt ProductXWAFRRole.Arn
-  CloudvizRoleARN:
-    Description: ARN of the Cloudviz Architecture Diagram IAM Role.
-    Value: !GetAtt CloudvizArchitectureDiagramRole.Arn
+    Value: !GetAtt CloudelligentWAFRRole.Arn
+  DiscoveryRoleArn:
+    Value: !GetAtt CloudelligentDiscoveryRole.Arn

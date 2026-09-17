@@ -18,6 +18,36 @@ Each entry documents a change to the CloudFormation template deployed into custo
 
 ---
 
+## [2.3] — 2026-09-17
+
+### Added: Automatic StackSet Deployment to a Chosen OU (ADR-003)
+
+**What changed:**  
+The organization StackSet now **auto-deploys** member-account roles. Added an `OrgUnitId` parameter and a `StackInstancesGroup` on `CloudelligentOnboardingMemberStackSet`. When `EnableOrganizations=yes`, the SA supplies one OU ID (a child OU `ou-xxxx-xxxxxxxx` or the org root `r-xxxx`) and the roles deploy to every account under it automatically, in the stack's region. Previously the StackSet was a shell that required an SA to add stack instances manually.
+
+**Why:**  
+The manual "add stack instances" step added onboarding friction and was error-prone (wrong OU, wrong region). Auto-deployment makes org onboarding a single stack deployment. Accounts that later join the target OU are still covered automatically via the existing `AutoDeployment: Enabled` setting.
+
+**Customer impact:**
+- New org customers: roles deploy to the chosen OU in one step; no manual StackSet work.
+- Existing org customers: on the next stack update they must supply `OrgUnitId`. If they previously added instances manually to the same OU, CloudFormation reconciles to the declared target.
+- Scope is controlled by which OU ID is supplied — a narrow child OU limits coverage; the root covers the whole org.
+
+**Sales talking point:**  
+> "For AWS Organizations, onboarding is a single deployment — you tell us which OU to cover and the roles roll out to every account in it automatically, including accounts you add later."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | During org onboarding, obtain the target OU (or root) ID from the customer's AWS Organizations console and pass it as `OrgUnitId`. To remove, delete the main stack (clean up any failed instances first). |
+| Product Manager | Note: one OU per deployment. Multi-OU customers need a stack update or a separately managed instance. |
+| Sales | Position org onboarding as single-step, auto-scaling to new accounts. |
+
+**Reference:** [ADR-003](docs/adr/ADR-003-stackset-auto-deployment.md).
+
+---
+
 ## [2.2] — 2026-09-17
 
 ### Removed: ComputeOptimizerPolicy — Compute Optimizer Is Not Used (ADR-004)
@@ -243,8 +273,10 @@ Single stack replaces the old CoreStack template (`Corestack_FinOps_read_access.
 - Per-client External ID (confused-deputy protection) replaces the old shared hardcoded ID
 - Org rollout uses a service-managed StackSet shell (SA manually adds stack instances to target OUs/accounts)
 
+> **Superseded by [2.3]:** As of v2.3 the StackSet auto-deploys to a chosen OU via the `OrgUnitId` parameter — the manual "add stack instances" step described here no longer applies. See the [2.3] entry.
+
 **Sales talking point:**  
-> "One CloudFormation stack covers your entire AWS Organization. Deploy once in the management account, add member accounts to the StackSet, and every account is connected — no per-account role setup."
+> "One CloudFormation stack covers your entire AWS Organization. Deploy once in the management account, add member accounts to the StackSet, and every account is connected — no per-account role setup." _(Note: as of v2.3, member accounts are covered automatically via the `OrgUnitId` you provide — no manual StackSet step.)_
 
 **Action required:**
 

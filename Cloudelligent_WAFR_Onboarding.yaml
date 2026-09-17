@@ -27,6 +27,18 @@ Parameters:
       and you want ProductX to scan member accounts too. Requires CloudFormation
       StackSets trusted access to be activated in AWS Organizations first.
       Leave 'no' for single-account onboarding.
+  OrgUnitId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^(r-[0-9a-z]{4,32}|ou-[0-9a-z]{4,32}-[0-9a-z]{8,32})$'
+    ConstraintDescription: >-
+      Must be a valid AWS Organizations root ID (r-xxxx) or organizational unit
+      ID (ou-xxxx-xxxxxxxx).
+    Description: >-
+      Required when EnableOrganizations=yes. The single AWS Organizations root
+      (r-xxxx) or organizational unit (ou-xxxx-xxxxxxxx) to deploy member-account
+      roles into. Member roles auto-deploy to all current accounts in this OU, and
+      to any accounts that later join it. Leave empty for single-account onboarding.
   ExistingCURBucket:
     Type: String
     Default: ''
@@ -584,6 +596,12 @@ Resources:
           ParameterValue: !Ref 'AWS::AccountId'
         - ParameterKey: ExternalId
           ParameterValue: !Ref ExternalId
+      StackInstancesGroup:
+        - DeploymentTargets:
+            OrganizationalUnitIds:
+              - !Ref OrgUnitId
+          Regions:
+            - !Ref 'AWS::Region'
       TemplateBody: |
         AWSTemplateFormatVersion: '2010-09-09'
         Description: Cloudelligent onboarding roles for member accounts (StackSet-deployed).

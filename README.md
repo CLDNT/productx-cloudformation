@@ -1,7 +1,7 @@
 # Cloudelligent WAFR Onboarding Stack — Template Reference
 
 **Template:** `Cloudelligent_WAFR_Onboarding.yaml`  
-**Version:** 2.2  
+**Version:** 2.3  
 **Last Updated:** 2026-09-17  
 **Owner:** Cloudelligent Product X Team
 
@@ -19,7 +19,7 @@ This CloudFormation template is deployed into each customer's AWS Management Acc
 
 > **Note:** RI/SP *purchasing* permissions are deployed via Archera's own separate template (`docs/knowledge/archera-cf-template.yaml`), not this stack.
 
-For AWS Organizations customers, a service-managed StackSet is created as a shell — an SA must manually add stack instances (targeting OUs or accounts) to deploy member-account roles.
+For AWS Organizations customers, a service-managed StackSet automatically deploys member-account roles to a single OU (or the org root) supplied by the SA via the `OrgUnitId` parameter. Accounts joining that OU later are covered automatically.
 
 ---
 
@@ -34,7 +34,7 @@ For AWS Organizations customers, a service-managed StackSet is created as a shel
 | 5 | `CloudvizArchitectureDiagramRole` | `cloudelligent-assessment-role` | Cloudviz account (`282762468439`) | Auto-generate architecture diagrams from live AWS resources | **Read-only** |
 | 6 | `BillingReadOnlyRole` | `BillingReadOnlyRole` | Cloudelligent finance (`898668804275`) | Internal billing analytics, invoice access, Trusted Advisor checks | **Read-only** |
 | 7 | `ReservedAIRole` | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility, CUR creation, spot data feeds | **Read + Write** (scoped) |
-| 8 | `CloudelligentOnboardingMemberStackSet` | _(StackSet)_ | — | Creates StackSet shell for member account role deployment (SA manually adds stack instances) | N/A (deployment vehicle) |
+| 8 | `CloudelligentOnboardingMemberStackSet` | _(StackSet)_ | — | Auto-deploys member-account roles to the OU supplied in `OrgUnitId` (current + future accounts) | N/A (deployment vehicle) |
 
 ---
 
@@ -154,7 +154,7 @@ These allow ProductX to create a Cost & Usage Report and its delivery bucket for
 | Data-plane read Deny (ADR-005) | `ProductXWAFRRole` (and its member-account role) carry an explicit `DataPlaneReadDeny` policy that denies all customer application-data reads — S3 object contents (except CUR buckets), DynamoDB/DAX items, SQS messages, Kinesis records, OpenSearch/SimpleDB/Keyspaces/Timestream/QLDB data. Explicit Deny overrides `ReadOnlyAccess`. ProductX reads only resource **configuration/metadata**, CloudWatch metrics, Cost Explorer, and CUR objects. |
 | No long-term credentials | Cross-account assumed roles only. No access keys. |
 | Blast radius isolation | Each role trusts exactly one principal. Compromise of one platform cannot escalate to another. |
-| Org deployment | Service-managed StackSet created as a shell. SA manually adds stack instances to target OUs/accounts. Stack instances must also be manually deleted to remove member-account roles. `AutoDeployment: Enabled` means new accounts joining targeted OUs will receive roles automatically after initial setup. |
+| Org deployment | Service-managed StackSet auto-deploys member-account roles to the OU (or root) supplied in `OrgUnitId`, in the stack's own region. `AutoDeployment: Enabled` covers accounts that later join the OU. To remove member roles, delete the main stack (which removes the stack instances); failed instances must be cleaned up first. |
 | Auditability | All role assumptions logged in CloudTrail. Role names are deterministic for easy log filtering. |
 
 ---
@@ -165,7 +165,8 @@ These allow ProductX to create a Cost & Usage Report and its delivery bucket for
 |---|---|---|---|
 | `TrustedAccountId` | No | `820440428496` | ProductX platform AWS account. Do not change unless directed. |
 | `ExternalId` | Yes | _(none)_ | Unique per-customer identifier issued by ProductX. Prevents confused deputy. |
-| `EnableOrganizations` | No | `no` | Set `yes` for multi-account orgs. Deploys StackSet to member accounts. |
+| `EnableOrganizations` | No | `no` | Set `yes` for multi-account orgs. Deploys the StackSet and auto-deploys member-account roles to `OrgUnitId`. |
+| `OrgUnitId` | Only if `EnableOrganizations=yes` | _(empty)_ | The single AWS Organizations root (`r-xxxx`) or organizational unit (`ou-xxxx-xxxxxxxx`) to deploy member-account roles into. Roles auto-deploy to all current accounts in this OU and to any that later join it. |
 | `ExistingCURBucket` | No | _(empty)_ | Optional. Name of an existing CUR bucket to read (e.g. Archera's `reserved-ai-cur-<uuid>.<10-digit-acct-id>`). Leave empty if ProductX will create its own CUR via `ManageCURPolicy`, or connect later via the ProductX Cost Explorer UI. |
 
 ---
@@ -175,13 +176,14 @@ These allow ProductX to create a Cost & Usage Report and its delivery bucket for
 | Mode | Stack | Roles Created | Use Case |
 |---|---|---|---|
 | Single Account | Main stack only | ProductXWAFRRole, Cloudviz, Billing, ReservedAI | Client with one AWS account |
-| Organization | Main stack + StackSet (SA manually adds instances) | All above + ProductXWAFRMemberRole + CloudvizMemberRole in targeted member accounts | Client with AWS Organizations |
+| Organization | Main stack + StackSet (auto-deploys instances to `OrgUnitId`) | All above + ProductXWAFRMemberRole + CloudvizMemberRole in every account under the target OU | Client with AWS Organizations |
 
 **Organization mode workflow:**
-1. Deploy main stack with `EnableOrganizations=yes` → creates StackSet shell
-2. SA manually adds stack instances to the StackSet, targeting specific OUs or accounts
-3. After initial setup, new accounts joining targeted OUs receive roles automatically (`AutoDeployment: Enabled`)
-4. To remove: SA must manually delete stack instances before deleting the main stack
+1. SA obtains the target OU ID (`ou-xxxx-xxxxxxxx`) or org root ID (`r-xxxx`) from the AWS Organizations console.
+2. Deploy main stack with `EnableOrganizations=yes` and `OrgUnitId=<that ID>`.
+3. The StackSet automatically deploys member-account roles to every account currently under that OU, in the stack's region.
+4. New accounts that later join the OU receive roles automatically (`AutoDeployment: Enabled`).
+5. To remove: delete the main stack (this removes the stack instances). If any instance is in a failed state, clean it up first or the delete will fail.
 
 ---
 

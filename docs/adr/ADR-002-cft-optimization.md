@@ -19,12 +19,12 @@ Current state:
 
 | Resource | Role Name | Trust Principal | Purpose |
 |---|---|---|---|
-| ProductXWAFRRole | `ProductXWAFRRole` | Cloudelligent ProductX (`820440428496`) | WAFR + FinOps + Cost + Compliance |
-| CloudvizArchitectureDiagramRole | `cloudelligent-assessment-role` | Cloudviz (`282762468439`) | Architecture diagrams |
-| BillingReadOnlyRole | `BillingReadOnlyRole` | Internal finance (`898668804275`) | Invoice/billing analytics |
-| ReservedAIRole | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility + CUR creation (RI/SP purchasing is in Archera's separate full template) |
+| CloudelligentWAFRRole | `ProductXWAFRRole` | Cloudelligent ProductX (`820440428496`) | WAFR + FinOps + Cost + Compliance |
+| CloudelligentDiscoveryRole | `CloudelligentDiscoveryRole` | Cloudviz (`282762468439`) | Architecture diagrams |
+| CloudelligentBillingRole | `BillingReadOnlyRole` | Internal finance (`898668804275`) | Invoice/billing analytics |
+| CloudelligentFinOpsRole | `ReservedAI-Write` | Archera (`967800896805`) | Cost visibility + CUR creation (RI/SP purchasing is in Archera's separate full template) |
 
-Plus policies attached to `ProductXWAFRRole` (`ComplianceSignalAccess`, `WAFRWorkloadManagement`, `DataPlaneReadDeny`, `ManageCURPolicy`, and the conditional `AllowAssumeMemberRoles` + `ExistingCURBucketPolicy`) and the StackSet.
+Plus policies attached to `CloudelligentWAFRRole` (`ComplianceSignalAccess`, `WAFRWorkloadManagement`, `DataPlaneReadDeny`, `ManageCURPolicy`, and the conditional `AllowAssumeMemberRoles` + `ExistingCURBucketPolicy`) and the StackSet.
 
 ---
 
@@ -61,7 +61,7 @@ Every action in this policy is already granted by the `ReadOnlyAccess` managed p
 
 **Recommendation: KEEP (not actionable)**
 
-This role creates `cloudelligent-assessment-role` with a **custom scoped read-only policy** (`CloudvizReadOnlyAccess`, 52 targeted Describe/List/Get actions — see `docs/knowledge/cloudviz_custom_readonly_policy.json`), trusted by Cloudviz's AWS account (`282762468439`). It exists solely to let Cloudviz generate architecture diagrams.
+This role creates `CloudelligentDiscoveryRole` (Cloudviz) with a **custom scoped read-only policy** (`CloudelligentDiscoveryReadOnlyAccess`, 52 targeted Describe/List/Get actions — see `docs/knowledge/cloudviz_custom_readonly_policy.json`), trusted by Cloudviz's AWS account (`282762468439`). It exists solely to generate architecture diagrams.
 
 **Decision:** Cloudviz remains a required tool. ProductX does not currently support architecture diagram generation, so this role cannot be removed. The role stays in the template.
 

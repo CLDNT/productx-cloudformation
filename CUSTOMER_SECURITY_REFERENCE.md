@@ -1,7 +1,7 @@
-# Cloudelligent Onboarding Stack — Customer Security Reference
+# Cloudelligent Discovery Role — Customer Security Reference
 
 **Template:** `Cloudelligent_WAFR_Onboarding.yaml`  
-**Version:** 2.3  
+**Version:** 2.4  
 **Date:** September 2026
 
 ---
@@ -24,16 +24,16 @@ For AWS Organizations, a StackSet automatically deploys the roles to the account
 
 | # | IAM Role | Purpose | Access Level |
 |---|---|---|---|
-| 1 | `ProductXWAFRRole` | WAFR assessments, cost optimization, compliance scanning, cost visibility | Read-only (config/metadata + cost data; application-data reads explicitly denied) + Well-Architected Tool workload management + CUR provisioning |
-| 2 | `cloudelligent-assessment-role` | Architecture diagram generation | Read-only |
+| 1 | `ProductXWAFRRole` | WAFR reviews, cost optimization, compliance scanning, cost visibility | Read-only (config/metadata + cost data; application-data reads explicitly denied) + Well-Architected Tool workload management + CUR provisioning |
+| 2 | `CloudelligentDiscoveryRole` | Read-only resource discovery for architecture diagram generation | Read-only |
 | 3 | `BillingReadOnlyRole` | Billing analytics and invoice visibility | Read-only |
-| 4 | `ReservedAI-Write` | Cost data export provisioning (for RI/SP analysis tooling) | Read + limited write (scoped) |
+| 4 | `ReservedAI-Write` | Cost data export provisioning (for RI/SP analysis) | Read + limited write (scoped) |
 
 Additional conditional resources:
-- **AllowAssumeMemberRoles** — policy enabling the ProductX role to assume matching roles in member accounts (org mode only)
-- **ManageCURPolicy** — policy enabling ProductX to create a Cost & Usage Report and delivery bucket
-- **ExistingCURBucketPolicy** — policy enabling ProductX to read an existing CUR bucket (if provided)
-- **StackSet** — automatically deploys `ProductXWAFRRole` and `cloudelligent-assessment-role` to the accounts under the specified OU (org mode only)
+- **AllowAssumeMemberRoles** — policy enabling the primary role to assume matching roles in member accounts (org mode only)
+- **ManageCURPolicy** — policy enabling creation of a Cost & Usage Report and delivery bucket
+- **ExistingCURBucketPolicy** — policy enabling read of an existing CUR bucket (if provided)
+- **StackSet** — automatically deploys the roles to the accounts under the specified OU (org mode only)
 
 ---
 
@@ -117,7 +117,7 @@ These are standard AWS managed policies used by hundreds of third-party tools fo
 
 ProductX reads only **resource configuration and metadata** (how resources are set up), **performance metrics** (CloudWatch), and your **cost data** (Cost Explorer + CUR). It **cannot** read the contents of your objects, databases, queues, or streams. Because this is an explicit IAM `Deny`, it is a hard technical guarantee your security team can verify directly in the template — not a matter of trust or convention. This is particularly relevant for regulated data (e.g. PHI under HIPAA): ProductX has no ability to read it.
 
-**Architecture diagram role** (`cloudelligent-assessment-role`) uses a **custom, tightly-scoped read-only policy** — approximately 50 specific `Describe`/`List`/`Get` actions limited to the resource types needed for diagram generation (EC2, RDS, Lambda, ECS, EKS, ELB, S3 metadata, etc.). It does **not** use the broad `ReadOnlyAccess` policy and cannot read application data.
+**Architecture diagram role** (`CloudelligentDiscoveryRole`) uses a **custom, tightly-scoped read-only policy** — 52 specific `Describe`/`List`/`Get` actions limited to the resource types needed for diagram generation (EC2, RDS, Lambda, ECS, EKS, ELB, S3 metadata, etc.). It does **not** use the broad `ReadOnlyAccess` policy and cannot read application data.
 
 ---
 

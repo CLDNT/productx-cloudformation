@@ -18,6 +18,43 @@ Each entry documents a change to the CloudFormation template deployed into custo
 
 ---
 
+## [2.4] — 2026-09-17
+
+### Changed: De-Branded Template + Cloudviz Role Renamed (ADR-006)
+
+**What changed:**  
+Per management feedback, the customer-facing template was de-branded and one role renamed:
+- **Template `Description`** rewritten to a generic Cloudelligent read-only onboarding statement — no tool/vendor names.
+- **All comments removed** from the template (it is shared with customers).
+- **Parameter and output descriptions removed** from the template (explanatory content lives in the docs, not the customer-facing CF).
+- **Logical IDs de-branded** to a neutral `Cloudelligent*` scheme: `ProductXWAFRRole`→`CloudelligentWAFRRole`, `CloudvizArchitectureDiagramRole`→`CloudelligentDiscoveryRole`, `BillingReadOnlyRole`→`CloudelligentBillingRole`, `ReservedAIRole`→`CloudelligentFinOpsRole` (+ member-template equivalents). Outputs renamed accordingly (`CloudvizRoleARN`→`DiscoveryRoleArn`, etc.).
+- **Cloudviz role `RoleName` renamed** `cloudelligent-assessment-role`→`CloudelligentDiscoveryRole` (both the management and member roles), and its inline policy `CloudvizReadOnlyAccess`→`CloudelligentDiscoveryReadOnlyAccess`.
+- **All other deployed `RoleName` values are unchanged** (`ProductXWAFRRole`, `BillingReadOnlyRole`, `ReservedAI-Write`, `ProductXWAFRMemberRole`) to avoid breaking third-party/internal integrations that reference them by name.
+- **Read-only guardrail** recorded as a governance principle (no *new* write/elevated permissions without review). Existing scoped writes (Well-Architected workload management, CUR provisioning) are retained.
+
+**Why:**  
+The template is shared with external customers for security review. Management wanted it to read as a single Cloudelligent Product X read-only artifact without giving prominence to third-party tooling in names, descriptions, or comments.
+
+**Customer impact:**
+- **Cloudviz diagram generation breaks for existing customers** until each customer's stored Role ARN is updated on the Cloudviz side — the role name is part of the ARN Cloudviz calls. **This breakage is accepted** (management decision). New customers are unaffected (they get `CloudelligentDiscoveryRole` from the start).
+- No other customer impact — logical-ID/description changes are cosmetic; all other deployed role names are unchanged.
+- Read-only posture unchanged: existing scoped writes remain; no new permissions added.
+
+**Sales talking point:**  
+> "The onboarding template is a clean, read-only Cloudelligent artifact your security team can review without wading through third-party tool branding. It requests only the access needed for assessment, cost visibility, and reporting."
+
+**Action required:**
+
+| Who | Action |
+|-----|--------|
+| SAs | For existing Cloudviz-using customers, coordinate updating the stored Role ARN on the Cloudviz side to `CloudelligentDiscoveryRole` (diagram generation breaks until done). |
+| Product Manager | Note the "no new write permissions without review" guardrail for future template changes. |
+| Sales | Position the template as a single de-branded read-only Cloudelligent artifact. |
+
+**Reference:** [ADR-006](docs/adr/ADR-006-naming-and-readonly-guardrail.md).
+
+---
+
 ## [2.3] — 2026-09-17
 
 ### Added: Automatic StackSet Deployment to a Chosen OU (ADR-003)
